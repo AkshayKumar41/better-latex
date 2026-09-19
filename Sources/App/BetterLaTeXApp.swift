@@ -29,6 +29,9 @@ struct BetterLaTeXApp: App {
                 .keyboardShortcut("n")
                 Button("Open Folder…") { pickFolder(ws) }
                     .keyboardShortcut("o")
+                Divider()
+                Button("Import PDF or LaTeX…") { ws.chooseAndImport() }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .saveItem) {
                 Button("Save") { ws.save(ws.currentDoc) }

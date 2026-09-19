@@ -1,10 +1,12 @@
 # BetterLaTeX
 
+*Boredom to the point of creation.*
+
 A Mac app for writing mathematics in English. You type `sum from k = 1 to n of a^k x^k`;
 a typeset page appears beside it; `Cmd-E` gives you a PDF. No LaTeX distribution, no
 Node, no network, no account.
 
-Built for a MacBook that should not notice the app is running: a 2.8MB bundle, about
+Built for a MacBook that should not notice the app is running: a 3.1MB bundle, about
 0.35% of one core when idle, and roughly 60MB of private memory.
 
 ---
@@ -62,7 +64,9 @@ loop for the language: **a word that stays grey is being treated as a plain vari
 which is what you want for `x`, `y` and `theta`, and a warning for anything else.
 
 **Page** (right, `Cmd-R`) is the rendered document, redrawn about 70ms after you stop
-typing. It scrolls to follow the cursor. Pinch to zoom.
+typing. It scrolls to follow the cursor. The paper keeps letter proportions at every pane
+width: narrowing the pane zooms the page out rather than reflowing the text into a
+skinnier column, the way a PDF viewer behaves. Pinch to zoom further.
 
 **Meter** (corner, `Cmd-Shift-M`) shows what the app is costing you right now: processor
 time per second, memory footprint, and how long the last redraw took, with a sparkline of
@@ -88,6 +92,32 @@ theorem: There are infinitely many primes.
 proof: Suppose not, and let math(N = product from i = 1 to n of p_i + 1).
 ```
 
+**To break a line inside mathematics, press return.** A newline inside `display(...)`,
+`equation(...)` or `align(...)` starts a new row, aligned on its relation, so
+
+```
+display(
+(a + b)^2 = a^2 + 2 a b + b^2
+(a - b)^2 = a^2 - 2 a b + b^2
+)
+```
+
+sets two aligned lines. Writing `\\` instead of a newline does the same thing, for the
+LaTeX habit. A single-line block stays a single centred formula.
+
+**To break a line inside mathematics, press return.** A newline inside `display(...)`,
+`equation(...)` or `align(...)` starts a new row, aligned on its relation:
+
+```
+display(
+(a + b)^2 = a^2 + 2 a b + b^2
+(a - b)^2 = a^2 - 2 a b + b^2
+)
+```
+
+Writing `\\` instead of a newline does the same, for the LaTeX habit. A single-line block
+stays one centred formula.
+
 Four constructs put mathematics on the page: `math(...)` inline, `display(...)` on its
 own line, `equation(...)` numbered, `align(...)` with one row per source line aligned on
 its relation. `$x^2$` and `$$x^2$$` work too. A leading backslash switches any construct
@@ -110,10 +140,33 @@ Everything else is English: `for all s in S`, `there exists x in reals such that
 `matrix [1, 2; 3, 4]`, `cases {x^2 if x >= 0; -x^2 otherwise}`, `n choose k`,
 `derivative of f with respect to x`, `A transpose`, `sqrt of x`, `vec v dot vec w`.
 
+Indentation is deliberate rather than ignored: a paragraph that starts with a tab or two
+spaces is indented as a block, four spaces indents it twice as far, and `box:` at the
+start of a paragraph puts it in a frame. Inside mathematics, `boxed(E = m c^2)` frames a
+formula. Exports use `\leftskip` and `\fbox{\begin{minipage}...}`, so the `.tex` compiles
+anywhere without extra packages.
+
 Line endings follow LaTeX, not a word processor: a plain newline keeps flowing in the
 same paragraph, a blank line starts a new paragraph, and a line ending in a backslash (or
 two spaces, if that is the habit you have) forces a break without starting a paragraph.
 Inside `align(...)`, one source line is one row.
+
+Indentation is deliberate rather than ignored. A paragraph starting with a tab or two
+spaces is indented as a block (four spaces indents twice as far), and `box:` at the start
+of a paragraph frames it. Inside mathematics, `boxed(E = m c^2)` frames just the formula.
+Both export without extra packages, as `\leftskip` and `\fbox{\begin{minipage}...}`.
+
+Lists come in three kinds: `- ` bullets, `1. ` numbers, and `A. ` / `a) ` / `(a) ` letters.
+A lettered item keeps the letter you wrote rather than renumbering, and one written under a
+numbered item becomes a sub-part of it, so a problem set reads the way it is written:
+
+```
+1. Find a closed-form expression for each sequence.
+
+A. math(a_n = 4^n + 2 cdot 3^n).
+
+B. math(b_n = binom(n + 2, 2) 2^n).
+```
 
 Document structure is Markdown-shaped: `#` headings, `-` and `1.` lists, `> ` quotes,
 `|a|b|` tables, `**bold**`, `*italic*`, fenced code blocks, `[label](url)` links, and
@@ -156,6 +209,70 @@ Shortcuts menu: **Add Shortcut** (`Cmd-Shift-K`), **Edit Shortcuts File** (opens
 tab here), **Reload Shortcuts**. The sheet also lists what you have defined, with a trash
 icon per entry.
 
+## Importing
+
+`Cmd-Shift-I` converts a **PDF** or a **`.tex` file** into English you can edit. Opening
+either kind in a tab also shows a **Convert to English** button above it. The result is
+written beside the original as `<name>.bltx` and opened in a tab.
+
+### From LaTeX source
+
+A `.tex` file converts directly, because this is the transpiler run backwards, and the
+vocabulary is inverted from the same tables it uses, so the two stay in step:
+
+| LaTeX | Imported as |
+|---|---|
+| `\sum_{n \ge 0} a_n x^n` | `sum over n >= 0 of a_n x^n` |
+| `\frac{1}{1-4x}` | `1/(1 - 4 x)` |
+| `\binom{n+2}{2}` | `binom(n + 2, 2)` |
+| `\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}` | `matrix [1, 2; 3, 4]` |
+| `\section{Warm up}` | `# Warm up` |
+| `\begin{theorem}...\end{theorem}` | `theorem: ...` |
+| `\textbf{x}`, `\emph{x}`, `\href{u}{t}` | `**x**`, `*x*`, `[t](u)` |
+
+The preamble supplies `title:`, `author:` and `date:`; comments and layout-only commands
+(`\maketitle`, `\noindent`, `\vfill`) are dropped; and **any command the importer does not
+know is left as LaTeX**, which the editor passes straight through and still renders. That
+is the safety valve: an import never silently loses content.
+
+A `.tex` file opened in the app is shown as source rather than previewed as English,
+since raw LaTeX is not the language the preview reads.
+
+### From a PDF
+
+PDF import works by reading the glyphs the PDF actually draws - their font, size and position -
+and decoding them through each font's embedded character map, so it is not tied to one
+producer. The font a glyph is drawn in says what it is: Computer Modern Roman is prose,
+CMMI is a variable or a Greek letter, CMSY a relation, CMEX a big operator or delimiter.
+Size and baseline offset give superscripts and subscripts, a thin drawn rule gives a
+fraction, glyphs stacked inside big parentheses give a binomial, and small glyphs centred
+under a sigma give its limits. Those are turned back into the same English the editor
+accepts, so `\sum_{n\ge0} a_n x^n` comes back as `sum over n >= 0 of a_n x^n`.
+
+On a LaTeX-produced problem set, expect the prose to come back verbatim, with hyphenated
+line breaks rejoined, and most mathematics to come back correct:
+
+| From the PDF | Imported as |
+|---|---|
+| a Σ with limits and arguments | `math(sum over n >= 0 of a_n x^n)` |
+| a binomial identity | `display(sum from j = 0 to n of binom(r + j - 1, r - 1) binom(s + n - j - 1, s - 1) = binom(r + s + n - 1, r + s - 1).)` |
+| subscripts and powers | `math(a_n = 4^n + 2 cdot 3^n)` |
+
+**Treat the result as a draft, not a conversion you can trust unread.** Every imported
+file starts with a comment line saying so, along with the page and formula count. What
+works and what does not:
+
+| Input | Result |
+|---|---|
+| pdfLaTeX / XeLaTeX with embedded character maps | prose verbatim, most mathematics correct |
+| Word, Google Docs, most exporters | prose good, mathematics weaker |
+| a PDF with no character maps | text may be wrong; the file says so in a comment |
+| scanned or handwritten pages | nothing to recover - there is no text, only pixels |
+
+Structure is recovered too: the title, paragraph breaks taken from the document's own line
+spacing, problem numbering kept exactly as written, centred equations as `display(...)`,
+and page numbers dropped.
+
 ## Exporting
 
 `Cmd-E` writes a PDF: letter paper, 1in margins, selectable text, embedded fonts, page
@@ -178,6 +295,7 @@ to Overleaf, a journal, or a co-author who wants the source.
 | `Cmd-Shift-E` | export the `.tex` source |
 | `Cmd-W` | close the current tab |
 | `Cmd-Shift-K` | add a shortcut |
+| `Cmd-Shift-I` | convert a PDF or `.tex` file into an editable document |
 | `Cmd-Shift-/` | back to the reference |
 | `Cmd-B` | show or hide the file list |
 | `Cmd-R` | show or hide the rendered page |
@@ -201,6 +319,10 @@ same way. Nothing is stored in a database and nothing leaves the machine.
 ## How it works
 
 ```
+Sources/Import/        TeXImport.swift      LaTeX source back into English
+                       PDFText.swift        glyph extraction and character maps
+                       PDFLayout.swift      rows, scripts, fractions, operators
+                       PDFToEnglish.swift   structure back into English
 Sources/Transpile/     Symbols.swift        the word tables
                        MathTranspiler.swift lexer + recursive-descent emitter
                        DocTranspiler.swift  document structure, HTML and LaTeX back ends

@@ -152,5 +152,163 @@ if !DocTranspiler.render("first\\\nsecond").html.contains("<br>") {
     print("FAIL html line break missing")
 }
 
+// --- lettered sub-lists
+expectContains("A. first", "\\item[A.]", "a lettered item keeps its label")
+expectContains("a) first", "\\item[a)]", "a closing paren marker works too")
+expectContains("(b) second", "\\item[(b)]", "a parenthesised marker works too")
+checks += 1
+let lettered = DocTranspiler.render("1. problem\n\nA. part one\n\nB. part two").latex
+if !lettered.contains("\\item[A.]") || !lettered.contains("\\item[B.]") {
+    failures += 1
+    print("FAIL lettered parts lost their labels: \(lettered)")
+}
+checks += 1
+// a letter under a number is a sub-part, so its list opens inside the numbered one
+let nested = DocTranspiler.render("1. problem\nA. part").html
+if !nested.contains("<ol class=\"lettered\">") {
+    failures += 1
+    print("FAIL lettered sub-list not opened: \(nested)")
+}
+checks += 1
+if DocTranspiler.render("Sentence. A. B. Smith wrote it.").latex.contains("\\item") {
+    failures += 1
+    print("FAIL a sentence was mistaken for a lettered item")
+}
+
+// --- new rows inside a maths block
+expectContains("display(a = b\nc = d)", "a &= b \\\\\nc &= d", "a newline starts a new row in display")
+expectContains("display(a = b \\\\ c = d)", "a &= b \\\\\nc &= d", "a LaTeX row break also works")
+expectContains("equation(x = 1\ny = 2)", "\\begin{align}", "a multi-row equation is numbered as align")
+expectContains("display(x^2 + y^2 = r^2)", "\\[", "a single row is still a plain display")
+expectContains("display(\\begin{pmatrix} a \\\\ b \\end{pmatrix})", "pmatrix", "an environment keeps its own row breaks")
+
+// --- indentation and boxes
+expectContains("plain line\n\n  indented line", "\\setlength{\\leftskip}{2em}", "two spaces indent a block")
+expectContains("plain line\n\n\tindented line", "\\setlength{\\leftskip}{2em}", "a tab indents a block")
+expectContains("    deeper", "\\setlength{\\leftskip}{4em}", "indentation accumulates")
+expectContains("box: remember this", "\\fbox{", "box environment")
+checks += 1
+if !DocTranspiler.render("box: remember this").html.contains("class=\"boxed\"") {
+    failures += 1
+    print("FAIL box did not render as a box")
+}
+checks += 1
+if DocTranspiler.render("- item\n  - nested").latex.contains("leftskip") {
+    failures += 1
+    print("FAIL nested list items were treated as indented paragraphs")
+}
+
+// --- comments
+expectContains("% a note\nvisible text", "visible text", "a comment line is dropped")
+checks += 1
+if DocTranspiler.render("% a note\nvisible").latex.contains("a note") {
+    failures += 1
+    print("FAIL comment text leaked into the document")
+}
+
+// --- PDF import: tables, character maps, and layout on synthetic glyphs
+checks += 1
+if !PDFToEnglish.duplicateKeys.isEmpty {
+    failures += 1
+    print("FAIL the unicode table repeats \(PDFToEnglish.duplicateKeys)")
+}
+
+checks += 1
+let cmap = """
+2 beginbfchar
+<01> <00B7>
+<06> <03A3>
+endbfchar
+1 beginbfrange
+<41> <43> <0041>
+endbfrange
+"""
+let parsed = PDFTextExtractor.parseCMap(cmap.data(using: .utf8)!)
+if parsed[0x01] != "\u{00B7}" || parsed[0x06] != "\u{03A3}" || parsed[0x42] != "B" {
+    failures += 1
+    print("FAIL character map parsing: \(parsed)")
+}
+
+// a_n = 4^n, built the way the extractor would report it
+func glyph(_ text: String, _ font: String, _ size: CGFloat, _ x: CGFloat, _ y: CGFloat) -> PDFGlyph {
+    PDFGlyph(text: text, font: font, size: size, x: x, y: y, width: size * 0.5)
+}
+let sample = PDFPageContent(
+    glyphs: [
+        glyph("a", "CMMI10", 10.9, 100, 500),
+        glyph("n", "CMMI8", 8, 105, 498.4),
+        glyph("=", "CMR10", 10.9, 112, 500),
+        glyph("4", "CMR10", 10.9, 120, 500),
+        glyph("n", "CMMI8", 8, 126, 503.9),
+    ],
+    rules: [], unsupportedFonts: [], height: 792)
+checks += 1
+let sampleRows = PDFLayout.rows(sample)
+if sampleRows.count != 1 {
+    failures += 1
+    print("FAIL scripts should stay on their own line, got \(sampleRows.count) rows")
+} else {
+    let segments = PDFLayout.analyse(row: sampleRows[0], rules: [], body: 10.9)
+    let text = segments.map { segment -> String in
+        if case .math(let node) = segment { return PDFToEnglish.english(node) }
+        if case .prose(let t) = segment { return t }
+        return ""
+    }.joined()
+    if text != "a_n = 4^n" {
+        failures += 1
+        print("FAIL subscript and superscript recovery")
+        print("  want a_n = 4^n")
+        print("  got  \(text)")
+    }
+}
+
+// --- LaTeX import
+func expectTeX(_ tex: String, _ needle: String, _ note: String) {
+    checks += 1
+    let converted = TeXImport.convert(tex).source
+    if !converted.contains(needle) {
+        failures += 1
+        print("FAIL tex import \(note)")
+        print("  want substring \(needle)")
+        print("  got \(converted)")
+    }
+}
+
+expectTeX("$a_n = 4^n$", "math(a_n = 4^n)", "inline maths")
+expectTeX("\\[ \\sum_{n \\ge 0} a_n x^n \\]", "display(sum over n >= 0 of a_n x^n)", "display sum")
+expectTeX("$\\frac{1}{1-4x}$", "1/(1 - 4 x)", "fraction")
+expectTeX("$\\binom{n+2}{2}$", "binom(n + 2, 2)", "binomial")
+expectTeX("$\\sqrt{N} \\le N$", "sqrt(N) <= N", "root and relation")
+expectTeX("\\section{Warm up}", "# Warm up", "section")
+expectTeX("\\begin{enumerate}\n\\item first\n\\item second\n\\end{enumerate}", "1. first", "enumerate")
+expectTeX("\\begin{theorem}\nThere are infinitely many primes.\n\\end{theorem}", "theorem: There are infinitely many primes.", "theorem environment")
+expectTeX("$\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}$", "matrix [1, 2; 3, 4]", "matrix")
+expectTeX("\\textbf{bold} and \\emph{italic}", "**bold** and *italic*", "text styling")
+expectTeX("text % a comment", "text", "comments are dropped")
+expectTeX("$\\mathbb{R}$", "reals", "blackboard bold")
+expectTeX("\\maketitle\nBody text.", "Body text.", "layout-only commands are dropped")
+expectTeX("$\\unknowncommand{x}$", "\\unknowncommand", "an unknown command is passed through")
+
+// --- round trip: the editor's own document, exported and read back
+checks += 1
+let original = """
+title: Round trip
+
+# Section
+
+The sum display(sum from k = 1 to n of k^2) and a fraction math(1/2).
+"""
+let exported = DocTranspiler.render(original).latex
+let reimported = TeXImport.convert(exported).source
+let rerendered = DocTranspiler.render(reimported).latex
+for needle in ["\\sum_{k = 1}^{n} k^{2}", "\\frac{1}{2}", "\\section{Section}"] {
+    if !rerendered.contains(needle) {
+        failures += 1
+        print("FAIL round trip lost \(needle)")
+        print("  reimported: \(reimported)")
+        break
+    }
+}
+
 print("\(checks - failures)/\(checks) transpiler checks passed")
 if failures > 0 { exit(1) }

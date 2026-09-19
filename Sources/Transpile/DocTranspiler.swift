@@ -176,10 +176,12 @@ enum DocTranspiler {
         var html = ""
         var tex = ""
         var listStack: [(kind: String, indent: Int)] = []
+        var numberedAtRoot = false
         var inCode = false
         var codeBuf: [String] = []
         var para: [String] = []
         var paraLine = 0
+        var paraIndent = 0
         var metaPhase = true
         var tableBuf: [String] = []
         var tableLine = 0
@@ -192,6 +194,21 @@ enum DocTranspiler {
                 html += top.kind == "ul" ? "</ul>\n" : "</ol>\n"
                 tex += top.kind == "ul" ? "\\end{itemize}\n" : "\\end{enumerate}\n"
             }
+        }
+
+        func openList(_ kind: String, at indent: Int) {
+            switch kind {
+            case "ul":
+                html += "<ul>\n"
+                tex += "\\begin{itemize}\n"
+            case "alpha":
+                html += "<ol class=\"lettered\">\n"
+                tex += "\\begin{enumerate}\n"
+            default:
+                html += "<ol>\n"
+                tex += "\\begin{enumerate}\n"
+            }
+            listStack.append((kind, indent))
         }
 
         func flushPara() {
@@ -212,8 +229,26 @@ enum DocTranspiler {
                     break
                 }
             }
+            var boxed = false
+            if body.lowercased().hasPrefix("box:") {
+                boxed = true
+                body = String(body.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+            }
             let r = inline(body, chunks: chunks)
             out.wordCount += text.split(separator: " ").count
+            if boxed {
+                html += "<div class=\"boxed\" data-l=\"\(paraLine)\">\(r.html)</div>\n"
+                tex += "\\begin{center}\\fbox{\\begin{minipage}{0.92\\linewidth}\n\(r.tex)\n\\end{minipage}}\\end{center}\n\n"
+                paraIndent = 0
+                return
+            }
+            if paraIndent > 0, env == nil {
+                // Leading whitespace indents the block, the way a tab looks like it should.
+                html += "<p class=\"indent\" style=\"margin-left: \(paraIndent * 2)em\" data-l=\"\(paraLine)\">\(r.html)</p>\n"
+                tex += "{\\setlength{\\leftskip}{\(paraIndent * 2)em}\n\(r.tex)\n\\par}\n\n"
+                paraIndent = 0
+                return
+            }
             if env == nil, displayOnly(body, chunks: chunks) {
                 // A line that is nothing but display math is its own block, never
                 // wrapped in a paragraph: the exporter breaks pages on blocks.
@@ -294,6 +329,9 @@ enum DocTranspiler {
                 continue
             }
 
+            // A line starting with % is a note to yourself, as in LaTeX.
+            if line.hasPrefix("%") { continue }
+
             if metaPhase, let colon = line.firstIndex(of: ":"), !line.hasPrefix("#") {
                 let key = String(line[line.startIndex..<colon]).lowercased()
                 if ["title", "author", "date", "abstract", "keywords"].contains(key) {
@@ -305,6 +343,7 @@ enum DocTranspiler {
 
             if line.hasPrefix("#") {
                 flushPara(); closeLists(to: 0)
+                numberedAtRoot = false
                 var level = 0
                 var rest = Substring(line)
                 while rest.hasPrefix("#") { level += 1; rest = rest.dropFirst() }
@@ -332,28 +371,40 @@ enum DocTranspiler {
                 continue
             }
 
-            let indent = rawLine.prefix { $0 == " " }.count / 2
-            if let (marker, content) = listItem(line) {
+            let leading = rawLine.prefix { $0 == " " || $0 == "\t" }
+            let indent = (leading.filter { $0 == " " }.count / 2) + leading.filter { $0 == "\t" }.count
+            if let item = listItem(line) {
                 flushPara()
-                let kind = marker == "ul" ? "ul" : "ol"
-                if listStack.count > indent + 1 { closeLists(to: indent + 1) }
-                if listStack.count == indent + 1, listStack[indent].kind != kind {
-                    closeLists(to: indent)
+                var level = indent
+                // A lettered item written flush left, under a numbered one, is a
+                // sub-part of it: 1. then A., B. the way a problem set is written.
+                if item.kind == "alpha", level == 0, numberedAtRoot { level = 1 }
+                if item.kind == "ol", level == 0 { numberedAtRoot = true }
+
+                if listStack.count > level + 1 { closeLists(to: level + 1) }
+                if listStack.count == level + 1, listStack[level].kind != item.kind {
+                    closeLists(to: level)
                 }
-                while listStack.count < indent + 1 {
-                    html += kind == "ul" ? "<ul>\n" : "<ol>\n"
-                    tex += kind == "ul" ? "\\begin{itemize}\n" : "\\begin{enumerate}\n"
-                    listStack.append((kind, indent))
+                while listStack.count < level + 1 {
+                    openList(item.kind, at: level)
                 }
-                let r = inline(content, chunks: chunks)
-                out.wordCount += content.split(separator: " ").count
-                html += "<li data-l=\"\(n)\">\(r.html)</li>\n"
-                tex += "\\item \(r.tex)\n"
+                let r = inline(item.content, chunks: chunks)
+                out.wordCount += item.content.split(separator: " ").count
+                if item.kind == "alpha" {
+                    html += "<li data-l=\"\(n)\"><span class=\"lbl\">\(escapeHTML(item.label))</span>\(r.html)</li>\n"
+                    tex += "\\item[\(item.label)] \(r.tex)\n"
+                } else {
+                    html += "<li data-l=\"\(n)\">\(r.html)</li>\n"
+                    tex += "\\item \(r.tex)\n"
+                }
                 continue
             }
             closeLists(to: 0)
 
-            if para.isEmpty { paraLine = n }
+            if para.isEmpty {
+                paraLine = n
+                paraIndent = min(indent, 4)
+            }
             // A trailing backslash, or two trailing spaces, forces a line break;
             // an ordinary newline keeps flowing in the same paragraph.
             if line.hasSuffix("\\") {
@@ -433,15 +484,30 @@ enum DocTranspiler {
         return sawDisplay
     }
 
-    private static func listItem(_ line: String) -> (String, String)? {
+    /// A list item: bullets, numbers, or letters. A lettered item keeps the label
+    /// exactly as written, because `A.` renumbered to `B.` would be a lie about
+    /// what the document says.
+    private static func listItem(_ line: String) -> (kind: String, content: String, label: String)? {
         if line.hasPrefix("- ") || line.hasPrefix("* ") || line.hasPrefix("+ ") {
-            return ("ul", String(line.dropFirst(2)))
+            return ("ul", String(line.dropFirst(2)), "")
         }
         var digits = ""
         var rest = Substring(line)
         while let f = rest.first, f.isNumber { digits.append(f); rest = rest.dropFirst() }
         if !digits.isEmpty, rest.hasPrefix(". ") || rest.hasPrefix(") ") {
-            return ("ol", String(rest.dropFirst(2)))
+            return ("ol", String(rest.dropFirst(2)), digits + String(rest.first!))
+        }
+        // (a) content
+        if line.hasPrefix("("), line.count > 3 {
+            let chars = Array(line)
+            if chars[1].isLetter, chars[2] == ")", chars[3] == " " {
+                return ("alpha", String(line.dropFirst(4)), "(\(chars[1]))")
+            }
+        }
+        // A. content   or   a) content
+        let chars = Array(line)
+        if chars.count > 2, chars[0].isLetter, chars[1] == "." || chars[1] == ")", chars[2] == " " {
+            return ("alpha", String(line.dropFirst(3)), String(chars[0]) + String(chars[1]))
         }
         return nil
     }
@@ -529,9 +595,23 @@ enum DocTranspiler {
             let m = MathParser.latex(chunk.body)
             return ("<span class=\"km\">\(escapeHTML(m))</span>", "$\(m)$")
         case .display:
+            // A newline inside a display is a new row: pressing return in a maths
+            // block should do what it looks like it does.
+            let rows = mathRows(chunk.body)
+            if rows.count > 1 {
+                let body = rows.joined(separator: " \\\\\n")
+                return ("<div class=\"km kd\">\(escapeHTML("\\begin{aligned}\n\(body)\n\\end{aligned}"))</div>",
+                        "\\begin{align*}\n\(body)\n\\end{align*}\n")
+            }
             let m = MathParser.latex(chunk.body)
             return ("<div class=\"km kd\">\(escapeHTML(m))</div>", "\\[\n\(m)\n\\]\n")
         case .equation:
+            let rows = mathRows(chunk.body)
+            if rows.count > 1 {
+                let body = rows.joined(separator: " \\\\\n")
+                return ("<div class=\"km kd numbered\">\(escapeHTML("\\begin{aligned}\n\(body)\n\\end{aligned}"))</div>",
+                        "\\begin{align}\n\(body)\n\\end{align}\n")
+            }
             let m = MathParser.latex(chunk.body)
             return ("<div class=\"km kd numbered\">\(escapeHTML(m))</div>",
                     "\\begin{equation}\n\(m)\n\\end{equation}\n")
@@ -551,6 +631,23 @@ enum DocTranspiler {
         case .code:
             return ("<code>\(escapeHTML(chunk.body))</code>", "\\texttt{\(Tex.escape(chunk.body))}")
         }
+    }
+
+    /// Splits a display body into rows: one per line, or per `\\` for the LaTeX
+    /// habit. A body containing an environment of its own is left alone, because
+    /// its `\\` belong to that environment.
+    private static func mathRows(_ body: String) -> [String] {
+        var pieces = body.components(separatedBy: "\n")
+        if !body.contains("\\begin{") {
+            pieces = pieces.flatMap { $0.components(separatedBy: "\\\\") }
+        }
+        return pieces
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { row -> String in
+                let m = MathParser.latex(row)
+                return m.contains("&") ? m : alignAtRelation(m)
+            }
     }
 
     /// `x = y` -> `x &= y` so align rows line up on the relation. The relation has

@@ -256,7 +256,22 @@ final class MathParser {
         let tok = t[i]
         switch tok {
         case .num(let n): i += 1; prevRaw = false; return n
-        case .raw(let r): i += 1; prevRaw = true; return r
+        case .raw(let r):
+            i += 1
+            prevRaw = true
+            // \begin{pmatrix} names an environment; its argument is a name, not
+            // English to translate.
+            if r == "\\begin" || r == "\\end", i < t.count, case .open("{") = t[i] {
+                let inner = collectGroup()
+                let name = inner.compactMap { tok -> String? in
+                    if case .word(let w) = tok { return w }
+                    if case .num(let n) = tok { return n }
+                    if case .sym(let s) = tok { return s }
+                    return nil
+                }.joined()
+                return r + "{" + name + "}"
+            }
+            return r
         case .lit(let cmd, let body): i += 1; return cmd + "{" + Tex.escape(body) + "}"
         case .sym(let s): i += 1; return s
         case .close: i += 1; return nil

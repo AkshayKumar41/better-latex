@@ -104,10 +104,24 @@ private struct EditorColumn: View {
 
     @ViewBuilder private func content(for doc: Doc) -> some View {
         switch doc.kind {
+        case .text where doc.isTeX:
+            VStack(spacing: 0) {
+                ConvertBar(name: doc.name,
+                           note: "LaTeX source",
+                           action: { ws.importTeX(doc.url) })
+                Divider()
+                EditorPane(doc: doc, workspace: ws).id(doc.id)
+            }
         case .text:
             EditorPane(doc: doc, workspace: ws).id(doc.id)
         case .pdf:
-            PDFPane(url: doc.url).id(doc.id)
+            VStack(spacing: 0) {
+                ConvertBar(name: doc.name,
+                           note: "read only",
+                           action: { ws.importPDF(doc.url) })
+                Divider()
+                PDFPane(url: doc.url).id(doc.id)
+            }
         case .image:
             ScrollView { 
                 if let img = NSImage(contentsOf: doc.url) {
@@ -125,6 +139,35 @@ private struct EditorColumn: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.editorC)
         }
+    }
+}
+
+/// Offered above anything that can be rebuilt as an editable document.
+private struct ConvertBar: View {
+    let name: String
+    let note: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 11))
+                .foregroundColor(Palette.tealC)
+            Text(name)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Palette.inkC)
+                .lineLimit(1)
+            Text(note)
+                .font(.system(size: 10))
+                .foregroundColor(Palette.mutedC)
+            Spacer()
+            Button("Convert to English") { action() }
+                .controlSize(.small)
+                .help("Rewrite this as an editable document. The conversion is a draft to check, not a compiler.")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Palette.panelC)
     }
 }
 

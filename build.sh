@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 TARGET="arm64-apple-macos14.0"
 APP="dist/BetterLaTeX.app"
-SRC=(Sources/Transpile/*.swift Sources/App/*.swift)
+SRC=(Sources/Transpile/*.swift Sources/Import/*.swift Sources/App/*.swift)
 
 case "${1:-app}" in
 install)
@@ -18,7 +18,7 @@ install)
   ;;
 test)
   mkdir -p build
-  swiftc -O -target "$TARGET" Sources/Transpile/*.swift tests/main.swift -o build/bltx-test
+  swiftc -O -target "$TARGET" Sources/Transpile/*.swift Sources/Import/*.swift tests/main.swift -o build/bltx-test
   exec ./build/bltx-test
   ;;
 docs)
@@ -36,7 +36,7 @@ esac
 mkdir -p build
 
 # 1. transpiler checks gate the build
-swiftc -O -target "$TARGET" Sources/Transpile/*.swift tests/main.swift -o build/bltx-test
+swiftc -O -target "$TARGET" Sources/Transpile/*.swift Sources/Import/*.swift tests/main.swift -o build/bltx-test
 ./build/bltx-test
 
 # 2. app icon (cached)

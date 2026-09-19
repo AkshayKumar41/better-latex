@@ -19,9 +19,15 @@
     color: var(--ink);
     -webkit-font-smoothing: antialiased;
   }
+  .stage {
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+  }
   .page {
     width: 6.9in;
-    max-width: calc(100% - 32px);
+    flex: none;
+    transform-origin: top center;
     margin: 20px auto 40px;
     padding: 0.85in 0.8in 1in;
     background: var(--paper);
@@ -47,12 +53,22 @@
   .abstract { margin: 0 .5in .5in; font-size: .95em; }
   .abstitle { text-align: center; font-weight: 700; margin-bottom: .4em; }
   #doc ul, #doc ol { margin: .4em 0 .7em; padding-left: 1.6em; }
+  #doc ol.lettered { list-style: none; padding-left: 2.1em; }
+  #doc ol.lettered > li { text-indent: -1.5em; }
+  #doc ol.lettered .lbl { margin-right: .45em; }
   #doc li { margin: .18em 0; }
   #doc blockquote { margin: .7em 1.4em; color: var(--muted); font-style: italic; }
   #doc hr { border: 0; border-top: 1px solid var(--rule); margin: 1.2em 0; }
   #doc code { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: .88em; background: rgba(0,0,0,.045); padding: .08em .28em; border-radius: 3px; }
   #doc pre { background: rgba(0,0,0,.04); padding: .7em .9em; border-radius: 4px; overflow-x: auto; }
   #doc pre code { background: none; padding: 0; font-size: .85em; }
+  .boxed {
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--brass);
+    padding: .65em .85em;
+    margin: .95em 0;
+    border-radius: 2px;
+  }
   .env { margin: .8em 0; }
   .envname { font-weight: 700; font-style: normal; }
   .env.theorem, .env.lemma, .env.corollary, .env.proposition, .env.claim { font-style: italic; }
@@ -76,9 +92,11 @@
   @keyframes flash { from { background: rgba(138,100,22,.16); } to { background: transparent; } }
   /* export mode: an exact 624px column (6.5in at 96dpi) that the exporter scales to fit */
   html.exporting, html.exporting body { background: #fff; }
+  html.exporting .stage { overflow: visible; }
   html.exporting .page {
     width: 624px; max-width: none; margin: 0; padding: 0;
     box-shadow: none; border-radius: 0;
+    transform: none !important;
   }
   @media print {
     html, body { background: #fff; }
@@ -89,7 +107,7 @@
 </style>
 </head>
 <body>
-  <div class="page"><div id="doc"><div class="empty">Start typing - the rendered document appears here.</div></div></div>
+  <div class="stage"><div class="page"><div id="doc"><div class="empty">Start typing - the rendered document appears here.</div></div></div></div>
   <script src="katex/katex.min.js"></script>
   <script>
   (function () {
@@ -128,13 +146,42 @@
       return document.fonts.ready;
     })();
 
+    var stage = document.querySelector('.stage');
+    var page = document.querySelector('.page');
+    var exporting = false;
+
+    /* The paper keeps its proportions. A narrow pane zooms out rather than
+       reflowing the text into a skinnier column, the way a PDF viewer behaves. */
+    function fit() {
+      if (exporting) return;
+      page.style.transform = '';
+      stage.style.height = '';
+      var available = stage.clientWidth - 24;
+      var natural = page.offsetWidth;
+      if (!natural) return;
+      var scale = Math.min(1, available / natural);
+      if (scale < 0.25) scale = 0.25;
+      if (scale >= 0.999) return;
+      page.style.transform = 'scale(' + scale + ')';
+      stage.style.height = Math.ceil(page.offsetHeight * scale) + 'px';
+    }
+
+    if (window.ResizeObserver) {
+      var observer = new ResizeObserver(function () { fit(); });
+      observer.observe(stage);
+    } else {
+      window.addEventListener('resize', fit);
+    }
+
     window.bl = {
       ready: function () { return fontsReady; },
+      fit: fit,
       set: function (html) {
         var scroller = document.scrollingElement || document.body;
         var top = scroller.scrollTop;
         doc.innerHTML = html || '<div class="empty">Start typing - the rendered document appears here.</div>';
         renderMath(doc);
+        fit();
         scroller.scrollTop = top;
       },
       syncTo: function (line) {
@@ -151,6 +198,9 @@
         }
       },
       exportOn: function () {
+        exporting = true;
+        page.style.transform = '';
+        stage.style.height = '';
         document.documentElement.classList.add('exporting');
       },
       /* Page-break offsets that never cut through a block, in CSS pixels. */

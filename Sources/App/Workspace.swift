@@ -2,6 +2,8 @@
 // Everything is one-shot work items: nothing polls, nothing runs while idle.
 import AppKit
 import Combine
+import PDFKit
+import UniformTypeIdentifiers
 import SwiftUI
 
 final class Doc: ObservableObject, Identifiable {
@@ -35,8 +37,11 @@ final class Doc: ObservableObject, Identifiable {
 
     /// English-source files get the live LaTeX preview.
     var previewable: Bool {
-        kind == .text && ["bltx", "tex", "md", "txt", "markdown", ""].contains(url.pathExtension.lowercased())
+        kind == .text && ["bltx", "md", "txt", "markdown", ""].contains(url.pathExtension.lowercased())
     }
+
+    /// LaTeX source is shown as source; converting it is offered instead.
+    var isTeX: Bool { url.pathExtension.lowercased() == "tex" }
 }
 
 final class Workspace: ObservableObject {
@@ -287,6 +292,98 @@ final class Workspace: ObservableObject {
         } catch {
             status = "Delete failed: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: importing a PDF
+
+    /// Converts a PDF into an editable document beside it. Runs off the main
+    /// thread: a long document is thousands of glyphs to place.
+    func importPDF(_ url: URL) {
+        status = "Reading \(url.lastPathComponent)…"
+        let destinationDirectory = root ?? url.deletingLastPathComponent()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let document = PDFDocument(url: url) else {
+                DispatchQueue.main.async { self?.status = "Could not open \(url.lastPathComponent)" }
+                return
+            }
+            var pages: [PDFPageContent] = []
+            for index in 0..<document.pageCount {
+                guard let page = document.page(at: index)?.pageRef else { continue }
+                pages.append(PDFTextExtractor.read(page: page))
+            }
+            let name = url.deletingPathExtension().lastPathComponent
+            let result = PDFToEnglish.convert(pages, title: name)
+            var destination = destinationDirectory.appendingPathComponent("\(name).bltx")
+            var attempt = 2
+            while FileManager.default.fileExists(atPath: destination.path) {
+                destination = destinationDirectory.appendingPathComponent("\(name)-\(attempt).bltx")
+                attempt += 1
+            }
+            let header = """
+            % Converted from \(url.lastPathComponent) - \(result.pages) pages, \(result.mathRuns) formulas.
+            % Check the mathematics against the original; the conversion is a draft, not a compiler.
+            """
+            let notes = result.notes.map { "% \($0)" }.joined(separator: "\n")
+            let body = [header, notes.isEmpty ? nil : notes, result.source]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+            do {
+                try body.write(to: destination, atomically: true, encoding: .utf8)
+            } catch {
+                DispatchQueue.main.async { self?.status = "Could not write the document: \(error.localizedDescription)" }
+                return
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.treeVersion += 1
+                self.open(destination)
+                self.status = "Converted \(result.pages) pages, \(result.mathRuns) formulas - check the mathematics"
+            }
+        }
+    }
+
+    /// Reads a .tex file and writes the same document as English beside it.
+    func importTeX(_ url: URL) {
+        guard let tex = try? String(contentsOf: url, encoding: .utf8) else {
+            status = "Could not read \(url.lastPathComponent)"
+            return
+        }
+        let destinationDirectory = root ?? url.deletingLastPathComponent()
+        let name = url.deletingPathExtension().lastPathComponent
+        let result = TeXImport.convert(tex)
+        var destination = destinationDirectory.appendingPathComponent("\(name).bltx")
+        var attempt = 2
+        while FileManager.default.fileExists(atPath: destination.path) {
+            destination = destinationDirectory.appendingPathComponent("\(name)-\(attempt).bltx")
+            attempt += 1
+        }
+        let header = """
+        % Converted from \(url.lastPathComponent) - \(result.mathRuns) formulas.
+        % Commands this importer does not know are left as LaTeX, which still renders.
+        """
+        do {
+            try ([header, result.source].joined(separator: "\n")).write(to: destination, atomically: true, encoding: .utf8)
+        } catch {
+            status = "Could not write the document: \(error.localizedDescription)"
+            return
+        }
+        treeVersion += 1
+        open(destination)
+        status = "Converted \(url.lastPathComponent), \(result.mathRuns) formulas"
+    }
+
+    /// Sends the file down whichever importer suits it.
+    func importFile(_ url: URL) {
+        if url.pathExtension.lowercased() == "tex" { importTeX(url) } else { importPDF(url) }
+    }
+
+    func chooseAndImport() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.pdf, .init(filenameExtension: "tex") ?? .plainText]
+        panel.prompt = "Convert"
+        if panel.runModal() == .OK, let url = panel.url { importFile(url) }
     }
 
     // MARK: export
