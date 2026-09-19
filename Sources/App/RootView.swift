@@ -18,7 +18,7 @@ struct RootView: View {
                 }
                 EditorColumn(ws: ws)
                     .frame(minWidth: 340)
-                if ws.showPreview, ws.currentDoc?.previewable == true {
+                if ws.showPreview, ws.currentDoc != nil, ws.currentDoc?.previewable == true {
                     PreviewPane(bridge: ws.bridge)
                         .frame(minWidth: 320)
                         .background(Palette.surroundC)
@@ -91,14 +91,12 @@ private struct EditorColumn: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if !ws.docs.isEmpty {
-                TabStrip(ws: ws)
-                Divider()
-            }
+            TabStrip(ws: ws)
+            Divider()
             if let doc = ws.currentDoc {
                 content(for: doc)
             } else {
-                EmptyState(ws: ws)
+                ReferencePane(ws: ws)
             }
         }
         .background(Palette.editorC)
@@ -155,6 +153,7 @@ private struct TabStrip: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
+                ReferenceChip(ws: ws, active: ws.currentID == nil)
                 ForEach(ws.docs) { doc in
                     TabChip(doc: doc, ws: ws, active: doc.id == ws.currentID)
                 }
@@ -162,6 +161,73 @@ private struct TabStrip: View {
         }
         .frame(height: 34)
         .background(Palette.panelC)
+    }
+}
+
+private struct ReferenceChip: View {
+    @ObservedObject var ws: Workspace
+    let active: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "character.book.closed")
+                .font(.system(size: 10))
+                .foregroundColor(active ? Palette.brassC : Palette.mutedC)
+            Text("Reference")
+                .font(.system(size: 12, weight: active ? .semibold : .regular))
+                .foregroundColor(active ? Palette.inkC : Palette.mutedC)
+        }
+        .padding(.horizontal, 11)
+        .frame(height: 34)
+        .background(active ? Palette.editorC : Color.clear)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(active ? Palette.brassC : Color.clear).frame(height: 2)
+        }
+        .overlay(alignment: .trailing) { Rectangle().fill(Palette.borderC).frame(width: 1) }
+        .contentShape(Rectangle())
+        .onTapGesture { ws.showReference() }
+        .help("Every word the converter knows. Read only.")
+    }
+}
+
+/// The launch state: the reference, rendered and read-only, with the one action
+/// that has to happen before any writing can start.
+private struct ReferencePane: View {
+    @ObservedObject var ws: Workspace
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("English to LaTeX")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Palette.inkC)
+                    Text(ws.root == nil
+                         ? "Reference only. Choose a folder before writing."
+                         : "Reference only. Open a file, or make a new document.")
+                        .font(.system(size: 11))
+                        .foregroundColor(Palette.mutedC)
+                }
+                Spacer()
+                if let root = ws.root {
+                    Button("New Document") { ws.newFile(in: root) }
+                        .controlSize(.small)
+                    Button("Change Folder…") { pickFolder(ws) }
+                        .controlSize(.small)
+                } else {
+                    Button("Choose Folder…") { pickFolder(ws) }
+                        .controlSize(.large)
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .background(Palette.panelC)
+            Divider()
+            PreviewPane(bridge: ws.bridge)
+                .background(Palette.surroundC)
+        }
     }
 }
 
@@ -240,12 +306,14 @@ private struct Sidebar: View {
                     Image(systemName: "doc.badge.plus").font(.system(size: 11))
                 }
                 .buttonStyle(.plain).foregroundColor(Palette.mutedC)
-                .help("New document")
+                .disabled(!ws.canEdit)
+                .help(ws.canEdit ? "New document" : "Choose a folder first")
                 Button { if let r = ws.root { ws.newFolder(in: r) } } label: {
                     Image(systemName: "folder.badge.plus").font(.system(size: 11))
                 }
                 .buttonStyle(.plain).foregroundColor(Palette.mutedC)
-                .help("New folder")
+                .disabled(!ws.canEdit)
+                .help(ws.canEdit ? "New folder" : "Choose a folder first")
                 Button { ws.treeVersion += 1 } label: {
                     Image(systemName: "arrow.clockwise").font(.system(size: 11))
                 }
@@ -255,19 +323,51 @@ private struct Sidebar: View {
             .padding(.horizontal, 12)
             .frame(height: 34)
             Divider()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if let root = ws.root {
-                        TreeLevel(dir: root, depth: 0, ws: ws, expanded: $expanded)
+            if ws.root == nil {
+                NoFolder(ws: ws)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if let root = ws.root {
+                            TreeLevel(dir: root, depth: 0, ws: ws, expanded: $expanded)
+                        }
                     }
+                    .padding(.vertical, 6)
+                    .id(ws.treeVersion)
                 }
-                .padding(.vertical, 6)
-                .id(ws.treeVersion)
             }
             Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity)
         .background(Palette.panelC)
+    }
+}
+
+private struct NoFolder: View {
+    @ObservedObject var ws: Workspace
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Image(systemName: "folder.badge.questionmark")
+                .font(.system(size: 22, weight: .light))
+                .foregroundColor(Palette.brassC)
+            Text("No folder linked")
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundColor(Palette.inkC)
+            Text("Documents live in a folder you choose. Pick one to create files, open them in tabs and export PDFs.")
+                .font(.system(size: 11))
+                .foregroundColor(Palette.mutedC)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Choose Folder…") { pickFolder(ws) }
+                .controlSize(.regular)
+                .buttonStyle(.borderedProminent)
+            Text("The reference on the right works without one.")
+                .font(.system(size: 10))
+                .foregroundColor(Palette.mutedC)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -419,47 +519,5 @@ private struct StatusBar: View {
         .frame(height: 24)
         .background(Palette.panelC)
         .overlay(alignment: .top) { Rectangle().fill(Palette.borderC).frame(height: 1) }
-    }
-}
-
-// MARK: - empty state
-
-private struct EmptyState: View {
-    @ObservedObject var ws: Workspace
-
-    private let examples: [(String, String)] = [
-        ("math(sum from k = 1 to n of a^k x^k)", "a sum with limits"),
-        ("math(for all s in S)", "quantifiers in words"),
-        ("math(1/2 and 1//2)", "fraction, then a literal slash"),
-        ("math(integral from 0 to 1 of x^2 dx)", "an integral"),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("No document open")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(Palette.inkC)
-            VStack(alignment: .leading, spacing: 9) {
-                ForEach(examples, id: \.0) { line, note in
-                    HStack(spacing: 10) {
-                        Text(line)
-                            .font(.system(size: 11.5, design: .monospaced))
-                            .foregroundColor(Palette.tealC)
-                        Text(note)
-                            .font(.system(size: 11))
-                            .foregroundColor(Palette.mutedC)
-                    }
-                }
-            }
-            HStack(spacing: 10) {
-                Button("Open Folder…") { pickFolder(ws) }
-                if let r = ws.root {
-                    Button("New Document") { ws.newFile(in: r) }
-                }
-            }
-        }
-        .padding(34)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        .background(Palette.editorC)
     }
 }

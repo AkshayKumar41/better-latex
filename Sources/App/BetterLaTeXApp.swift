@@ -12,7 +12,7 @@ struct BetterLaTeXApp: App {
                 .frame(minWidth: 820, minHeight: 520)
                 .onAppear {
                     delegate.workspace = ws
-                    ws.restoreOrSeed()
+                    ws.start()
                 }
         }
         .defaultSize(width: 1420, height: 900)
@@ -22,6 +22,8 @@ struct BetterLaTeXApp: App {
                 Button("New Document") {
                     if let dir = ws.currentDoc?.url.deletingLastPathComponent() ?? ws.root {
                         ws.newFile(in: dir)
+                    } else {
+                        pickFolder(ws)
                     }
                 }
                 .keyboardShortcut("n")
@@ -65,12 +67,8 @@ struct BetterLaTeXApp: App {
                 Button("Reload Shortcuts") { ws.reloadShortcuts() }
             }
             CommandGroup(replacing: .help) {
-                Button("English-to-LaTeX Reference") {
-                    if let root = ws.root {
-                        let sheet = root.appendingPathComponent("syntax.bltx")
-                        if FileManager.default.fileExists(atPath: sheet.path) { ws.open(sheet) }
-                    }
-                }
+                Button("English-to-LaTeX Reference") { ws.showReference() }
+                    .keyboardShortcut("/", modifiers: [.command, .shift])
             }
         }
     }

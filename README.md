@@ -36,15 +36,22 @@ Line Tools. To keep the app around, drag `dist/BetterLaTeX.app` into `/Applicati
 and double-click it like anything else on the Mac. It is ad-hoc signed, so Gatekeeper
 allows it; there is no installer and nothing to uninstall but the bundle itself.
 
-On first launch the app copies a sample project into `~/Documents/BetterLaTeX` and opens
-it, so there is something on screen immediately: a two-minute tour and the full syntax
-reference, both written in the language the app reads.
+The app creates nothing on disk and opens no documents of its own. It launches on a
+**Reference** tab: the complete syntax, typeset by the app itself, read-only. Your own
+work needs a folder, so the sidebar asks for one before anything can be created or
+edited - click **Choose Folder…**, point it at any directory, and that becomes the
+project. The folder is remembered for next launch.
 
 ## The window
 
 Three columns, each of which can be collapsed.
 
-**Files** (left, `Cmd-B`) is the project folder. Click a file to open it in a tab.
+**Reference** is the first tab and cannot be closed or edited. It is the same document
+as [COMMANDS.md](COMMANDS.md), rendered: every construct and every word, with the
+mathematics typeset. `Cmd-Shift-/` returns to it from anywhere.
+
+**Files** (left, `Cmd-B`) is the project folder, once you have chosen one. Until then it
+shows a single action, and the new-file buttons stay disabled. Click a file to open it in a tab.
 Right-click for new document, new folder, rename, reveal in Finder, and move to Trash
 (the Trash, not an unlink, so a misclick is recoverable).
 
@@ -102,6 +109,11 @@ Everything else is English: `for all s in S`, `there exists x in reals such that
 `integral from 0 to 1 of x^2 dx`, `limit as n -> infinity of (1 + 1/n)^n`,
 `matrix [1, 2; 3, 4]`, `cases {x^2 if x >= 0; -x^2 otherwise}`, `n choose k`,
 `derivative of f with respect to x`, `A transpose`, `sqrt of x`, `vec v dot vec w`.
+
+Line endings follow LaTeX, not a word processor: a plain newline keeps flowing in the
+same paragraph, a blank line starts a new paragraph, and a line ending in a backslash (or
+two spaces, if that is the habit you have) forces a break without starting a paragraph.
+Inside `align(...)`, one source line is one row.
 
 Document structure is Markdown-shaped: `#` headings, `-` and `1.` lists, `> ` quotes,
 `|a|b|` tables, `**bold**`, `*italic*`, fenced code blocks, `[label](url)` links, and
@@ -166,6 +178,7 @@ to Overleaf, a journal, or a co-author who wants the source.
 | `Cmd-Shift-E` | export the `.tex` source |
 | `Cmd-W` | close the current tab |
 | `Cmd-Shift-K` | add a shortcut |
+| `Cmd-Shift-/` | back to the reference |
 | `Cmd-B` | show or hide the file list |
 | `Cmd-R` | show or hide the rendered page |
 | `Cmd-Shift-M` | show or hide the performance meter |
@@ -178,10 +191,9 @@ to Overleaf, a journal, or a co-author who wants the source.
 
 | Path | What |
 |---|---|
-| `~/Documents/BetterLaTeX` | the sample project, created on first launch |
-| `~/Library/Application Support/BetterLaTeX/shortcuts.conf` | your shortcuts |
+| `~/Library/Application Support/BetterLaTeX/shortcuts.conf` | your shortcuts, the only file the app creates |
 | `dist/BetterLaTeX.app` | the built app |
-| anywhere | your own projects; the app remembers the last folder |
+| anywhere | your projects: whatever folder you link, remembered between launches |
 
 Documents are yours: plain UTF-8 text, `.bltx` by convention but `.txt` and `.md` open the
 same way. Nothing is stored in a database and nothing leaves the machine.

@@ -197,6 +197,8 @@ enum DocTranspiler {
         func flushPara() {
             guard !para.isEmpty else { return }
             var text = para.joined(separator: " ")
+            // the joiner's space belongs before the break, not after it
+            text = text.replacingOccurrences(of: String(breakMark) + " ", with: String(breakMark))
             while text.last == breakMark { text.removeLast() }
             para.removeAll()
             var body = text

@@ -8,6 +8,14 @@ APP="dist/BetterLaTeX.app"
 SRC=(Sources/Transpile/*.swift Sources/App/*.swift)
 
 case "${1:-app}" in
+install)
+  # build, then replace the copy in /Applications
+  "$0" app
+  rm -rf "/Applications/BetterLaTeX.app"
+  cp -R "dist/BetterLaTeX.app" "/Applications/BetterLaTeX.app"
+  echo "installed /Applications/BetterLaTeX.app"
+  exit 0
+  ;;
 test)
   mkdir -p build
   swiftc -O -target "$TARGET" Sources/Transpile/*.swift tests/main.swift -o build/bltx-test

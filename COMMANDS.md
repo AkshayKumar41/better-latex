@@ -46,6 +46,10 @@ preview renders and what `Cmd-Shift-E` writes out.
 | `#`, `##`, `###`, `####` | section, subsection, subsubsection, paragraph |
 | `- `, `* `, `+ ` | bullet list; indent two spaces to nest |
 | `1. `, `1) ` | numbered list |
+| blank line | new paragraph |
+| plain newline | keeps flowing in the same paragraph, like LaTeX |
+| backslash at end of line | forced line break inside the paragraph |
+| two spaces at end of line | the same, for Markdown habit |
 | `> ` | block quotation |
 | `---`, `***` | horizontal rule |
 | three backticks | verbatim code block |
@@ -72,6 +76,7 @@ preview renders and what `Cmd-Shift-E` writes out.
 | `Cmd-B` | show or hide the file list |
 | `Cmd-R` | show or hide the rendered page |
 | `Cmd-Shift-M` | show or hide the performance meter |
+| `Cmd-Shift-/` | back to this reference, which is always the first tab |
 | `Cmd-Shift-]` | next document |
 | `Cmd-Shift-[` | previous document |
 | `Cmd-F` | find in the editor |

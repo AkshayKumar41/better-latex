@@ -80,22 +80,41 @@ final class Workspace: ObservableObject {
         status = url.lastPathComponent
     }
 
-    func restoreOrSeed() {
+    /// Restores the last folder if it still exists. Nothing is created, nothing is
+    /// opened: the reference page is what you get until you choose a folder.
+    func start() {
         UserSymbols.shared.createIfMissing()
         if let path = UserDefaults.standard.string(forKey: "lastFolder"),
            FileManager.default.fileExists(atPath: path) {
             openFolder(URL(fileURLWithPath: path))
         } else {
-            openFolder(Seed.install())
+            status = "Choose a folder to start writing"
         }
-        if let first = firstDocument() { open(first) }
+        showReference()
     }
 
-    private func firstDocument() -> URL? {
-        guard let root else { return nil }
-        let items = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
-        return items.filter { $0.pathExtension.lowercased() == "bltx" }.sorted { $0.lastPathComponent < $1.lastPathComponent }.first
-            ?? items.first { $0.pathExtension.lowercased() == "md" }
+    var lastFolder: URL? {
+        guard let path = UserDefaults.standard.string(forKey: "lastFolder"),
+              FileManager.default.fileExists(atPath: path) else { return nil }
+        return URL(fileURLWithPath: path)
+    }
+
+    // MARK: reference page
+
+    /// The bundled syntax reference, rendered read-only. Cached after the first build.
+    private var referenceHTML: String?
+
+    func showReference() {
+        currentID = nil
+        lastRenderedSource = ""
+        if referenceHTML == nil {
+            let source = (Bundle.main.resourceURL?.appendingPathComponent("sample/syntax.bltx"))
+                .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "# Reference unavailable"
+            let doc = DocTranspiler.render(source)
+            referenceHTML = doc.html
+            rendered = doc
+        }
+        bridge.set(html: referenceHTML ?? "")
     }
 
     // MARK: tabs
@@ -121,6 +140,7 @@ final class Workspace: ObservableObject {
             currentID = docs.indices.contains(next) ? docs[next].id : nil
         }
         render(immediate: true)
+        if currentID == nil { showReference() }
     }
 
     func select(_ doc: Doc) {
@@ -141,8 +161,12 @@ final class Workspace: ObservableObject {
 
     func render(immediate: Bool = false) {
         renderWork?.cancel()
-        guard let doc = currentDoc, doc.previewable else {
-            if currentDoc?.kind == .text { rendered = Rendered() }
+        guard let doc = currentDoc else {
+            showReference()
+            return
+        }
+        guard doc.previewable else {
+            if doc.kind == .text { rendered = Rendered() }
             return
         }
         let source = doc.text
@@ -213,6 +237,8 @@ final class Workspace: ObservableObject {
     }
 
     // MARK: file operations
+
+    var canEdit: Bool { root != nil }
 
     func newFile(in dir: URL, named suggestion: String = "untitled.bltx") {
         var url = dir.appendingPathComponent(suggestion)
@@ -303,23 +329,5 @@ final class Workspace: ObservableObject {
         } catch {
             status = "Export failed: \(error.localizedDescription)"
         }
-    }
-}
-
-/// First launch: put a real project on disk so the app opens with something in it.
-enum Seed {
-    static func install() -> URL {
-        let docsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dest = docsDir.appendingPathComponent("BetterLaTeX")
-        if !FileManager.default.fileExists(atPath: dest.path) {
-            try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
-            if let src = Bundle.main.resourceURL?.appendingPathComponent("sample"),
-               let items = try? FileManager.default.contentsOfDirectory(at: src, includingPropertiesForKeys: nil) {
-                for item in items {
-                    try? FileManager.default.copyItem(at: item, to: dest.appendingPathComponent(item.lastPathComponent))
-                }
-            }
-        }
-        return dest
     }
 }
