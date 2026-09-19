@@ -1,0 +1,61 @@
+title: Writing Mathematics in English
+author: BetterLaTeX
+date: A two minute tour
+
+abstract: Everything on this page was typed as ordinary English. There are no backslashes, no code(\begin{...}) blocks, and no LaTeX installation anywhere on this machine. Edit the text on the left and the page on the right redraws as you type.
+
+# The idea
+
+Anything inside \math(...) is read as English and set as mathematics. So typing math(sum from k = 1 to n of a^k x^k) gives display(sum from k = 1 to n of a^k x^k) and typing math(for all s in S) gives math(for all s in S), with the quantifier and the membership sign chosen for you.
+
+Words that the converter recognizes turn brass in the editor. A word that stays grey is being treated as a plain variable, which is exactly what you want for math(x), math(y) and math(theta).
+
+# Fractions and scripts
+
+A single slash is a fraction, because that is what a slash almost always means on paper: math(1/2), math(n/(n+1)), math((x+1)/(y+2)). A double slash is a literal slash, for things like math(km//h) and set differences.
+
+Use ^ for powers and _ for subscripts: math(a^k x^k), math(x_max), math(a_ij), math(e^(2 pi i theta)). A subscript takes the whole word, so math(x_max) reads as one name, while a power takes one letter, so math(a^kx^k) still means two factors.
+
+# Operators read left to right
+
+equation(integral from 0 to 1 of x^2 dx = 1/3)
+
+equation(limit as n -> infinity of (1 + 1/n)^n = e)
+
+align(
+sum from k = 1 to n of k = n(n+1)/2
+product from i = 1 to n of x_i = x_1 x_2 dots x_n
+)
+
+# Sets and logic
+
+- math(for all epsilon > 0 there exists delta > 0 such that abs(x - y) < delta)
+- math(A union B subset of C intersect D)
+- math(x not in empty set)
+- math(f: reals -> reals is defined as f(x) = x^2)
+- math(n is at most 10 and n is at least 2)
+
+# Things with structure
+
+display(matrix [1, 2; 3, 4] vec x = vec b)
+
+display(cases {x^2 if x >= 0; -x^2 otherwise})
+
+display(binom(n, k) = n factorial / (k factorial (n - k) factorial))
+
+# Ordinary document parts
+
+theorem: There are infinitely many primes.
+
+proof: Suppose the set of primes is finite, say math(p_1) through math(p_n). Then math(N = product from i = 1 to n of p_i + 1) is divisible by none of them, so its prime factors are new. This contradicts finiteness.
+
+| Notation | English | Renders |
+|---|---|---|
+| `sum from a to b of` | a sum with limits | math(sum from a to b of f) |
+| `sqrt of` | a square root | math(sqrt of x + 1) |
+| `d/dx` | a derivative | math(d/dx) |
+| `A transpose` | matrix transpose | math(A transpose) |
+
+> Any construct can be switched off with a backslash, so \math(x) stays as text.
+
+Press Cmd-E to save this as a PDF. Press Cmd-Shift-E to save the LaTeX source it generated, which compiles anywhere. The full list of words lives in `syntax.bltx` next door.

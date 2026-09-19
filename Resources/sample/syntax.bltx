@@ -1,0 +1,119 @@
+title: English to LaTeX Reference
+author: every word the converter knows
+
+# Constructs
+
+- `math(...)` sets mathematics inside a line
+- `display(...)` sets mathematics on its own line
+- `equation(...)` the same, with an equation number
+- `align(...)` one line of mathematics per source line, aligned on the relation
+- `code(...)` and backticks set literal monospace text
+- `text(...)` and `"quoted text"` put words inside mathematics
+- `latex(...)` passes raw LaTeX straight through
+- `$x^2$` and `$$x^2$$` also work, for habit
+- a leading backslash turns any of these off: \math(x) stays as text
+
+# Document structure
+
+- `title:`, `author:`, `date:`, `abstract:` at the top of the file
+- `#`, `##`, `###` for section, subsection, subsubsection
+- `-` or `*` for bullets, `1.` for numbered lists, two spaces to nest
+- `> ` for a quotation, `---` for a rule, three backticks for a code block
+- `| a | b |` rows make a table; a `|---|` row marks the header
+- `theorem:`, `lemma:`, `corollary:`, `proposition:`, `claim:`, `definition:`, `example:`, `proof:`, `remark:`, `note:` start a paragraph as that environment
+- `**bold**`, `*italic*`, `` `code` ``, `[label](https://url)`
+
+# Arithmetic and scripts
+
+| You type | You get |
+|---|---|
+| `1/2` | math(1/2) |
+| `1//2` | math(1//2) |
+| `a over b` | math(a over b) |
+| `x^2`, `x_i`, `x_max` | math(x^2), math(x_i), math(x_max) |
+| `e^(i pi)` | math(e^(i pi)) |
+| `n factorial`, `5!` | math(n factorial), math(5!) |
+| `n choose k` | math(n choose k) |
+| `x squared`, `y cubed` | math(x squared), math(y cubed) |
+| `A transpose`, `A inverse` | math(A transpose), math(A inverse) |
+| `abs(x)`, `norm(v)` | math(abs(x)), math(norm(v)) |
+| `floor(x)`, `ceil(x)` | math(floor(x)), math(ceil(x)) |
+| `sqrt of x`, `sqrt(x+1)` | math(sqrt of x), math(sqrt(x+1)) |
+| `root 3 of 8` | math(root 3 of 8) |
+
+# Big operators
+
+Each takes `from ... to ... of`, or `over ... of`, or `as ... of`.
+
+| You type | You get |
+|---|---|
+| `sum from k = 1 to n of a_k` | math(sum from k = 1 to n of a_k) |
+| `product from i = 1 to n of x_i` | math(product from i = 1 to n of x_i) |
+| `integral from 0 to 1 of f dx` | math(integral from 0 to 1 of f dx) |
+| `double integral over D of f dA` | math(double integral over D of f dA) |
+| `contour integral over C of f dz` | math(contour integral over C of f dz) |
+| `limit as x -> 0 of sin x / x` | math(limit as x -> 0 of sin x / x) |
+| `sum over k of a_k` | math(sum over k of a_k) |
+| `max over x in S of f(x)` | math(max over x in S of f(x)) |
+| `argmax over theta of L(theta)` | math(argmax over theta of L(theta)) |
+| `big union from i = 1 to n of A_i` | math(big union from i = 1 to n of A_i) |
+
+# Sets, logic, relations
+
+| You type | You get |
+|---|---|
+| `for all`, `for every` | math(for all) |
+| `there exists`, `there is no` | math(there exists), math(there is no) |
+| `in`, `not in` | math(in), math(not in) |
+| `such that`, `given` | math(such that) |
+| `union`, `intersect`, `without` | math(union), math(intersect), math(without) |
+| `subset of`, `superset of` | math(subset of), math(superset of) |
+| `empty set` | math(empty set) |
+| `implies`, `iff`, `not`, `and`, `or` | math(implies), math(iff), math(not), math(and), math(or) |
+| `therefore`, `because` | math(therefore), math(because) |
+| `->`, `=>`, `<=>`, `|->` | math(->), math(=>), math(<=>), math(|->) |
+| `<=`, `>=`, `!=`, `~=`, `==` | math(<=), math(>=), math(!=), math(~=), math(==) |
+| `at most`, `at least` | math(at most), math(at least) |
+| `is proportional to`, `is congruent to` | math(is proportional to), math(is congruent to) |
+| `reals`, `naturals`, `integers`, `rationals`, `complexes` | math(reals), math(naturals), math(integers), math(rationals), math(complexes) |
+| `infinity`, `aleph`, `hbar`, `ell` | math(infinity), math(aleph), math(hbar), math(ell) |
+
+# Calculus and analysis
+
+| You type | You get |
+|---|---|
+| `d/dx` | math(d/dx) |
+| `derivative of f with respect to x` | math(derivative of f with respect to x) |
+| `second derivative of y with respect to x` | math(second derivative of y with respect to x) |
+| `partial derivative of u with respect to t` | math(partial derivative of u with respect to t) |
+| `partial`, `nabla`, `laplacian` | math(partial), math(nabla), math(laplacian) |
+| `dx`, `dt`, `dtheta` | math(integral of f dx) |
+
+# Functions and decorations
+
+- upright operators: `sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh log ln exp det dim ker deg gcd arg Pr`
+- a function takes its argument, so `sin x / x` means math(sin x / x)
+- accents: `vec v`, `hat x`, `bar x`, `tilde x`, `overline z`, `conjugate z` give math(vec v), math(hat x), math(bar x), math(tilde x), math(overline z), math(z conjugate)
+- alphabets: `bold A`, `script H`, `frak g`, `blackboard R` give math(bold A), math(script H), math(frak g), math(blackboard R)
+- greek: write the name, `alpha beta gamma delta epsilon theta lambda mu pi rho sigma phi omega`, capitalised for the capital: math(alpha), math(Omega)
+
+# Structures
+
+| You type | You get |
+|---|---|
+| `matrix [1, 2; 3, 4]` | math(matrix [1, 2; 3, 4]) |
+| `bracket matrix [1, 0; 0, 1]` | math(bracket matrix [1, 0; 0, 1]) |
+| `det matrix [a, b; c, d]` | math(det matrix [a, b; c, d]) |
+| `cases {1 if x > 0; 0 otherwise}` | math(cases {1 if x > 0; 0 otherwise}) |
+| `set(1, 2, 3)` | math(set(1, 2, 3)) |
+| `inner(u, v)` | math(inner(u, v)) |
+| `P(A given B)` | math(P(A given B)) |
+| `boxed(E = m c^2)` | math(boxed(E = m c^2)) |
+
+# Grouping rules worth knowing
+
+- `(...)` groups and prints parentheses, except inside a fraction, where the parentheses are dropped: math((a+b)/(c+d))
+- `{...}` after `^` or `_` groups silently, as in LaTeX: math(x^{n+1})
+- `{...}` anywhere else is a set: math({1, 2, 3})
+- a raw LaTeX command keeps LaTeX's own grouping: math(\sqrt{2})
+- filler words `the` and `an` are dropped; `is` becomes an equals sign

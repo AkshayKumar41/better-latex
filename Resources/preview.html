@@ -1,0 +1,204 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="katex/katex.min.css">
+<style>
+  :root {
+    --surround: #e9e6e0;
+    --paper: #ffffff;
+    --ink: #17171a;
+    --rule: #d8d4cc;
+    --muted: #6d6a64;
+    --brass: #8a6416;
+  }
+  html.dark { --surround: #101114; --rule: #cfcbc2; }
+  html, body { margin: 0; padding: 0; background: var(--surround); }
+  body {
+    font-family: 'KaTeX_Main', 'Latin Modern Roman', Georgia, serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    width: 6.9in;
+    max-width: calc(100% - 32px);
+    margin: 20px auto 40px;
+    padding: 0.85in 0.8in 1in;
+    background: var(--paper);
+    box-shadow: 0 1px 2px rgba(0,0,0,.16), 0 10px 30px rgba(0,0,0,.10);
+    border-radius: 2px;
+    box-sizing: border-box;
+  }
+  #doc { counter-reset: sec eq; font-size: 11.6pt; line-height: 1.52; }
+  #doc p { margin: 0 0 .62em; text-align: justify; hyphens: auto; }
+  #doc p + p { text-indent: 1.2em; margin-top: -.2em; }
+  #doc h1, #doc h2, #doc h3, #doc h4 { font-weight: 700; line-height: 1.25; margin: 1.5em 0 .5em; }
+  #doc h1:not(.doctitle) { font-size: 1.32em; counter-increment: sec; counter-reset: sub; }
+  #doc h1:not(.doctitle)::before { content: counter(sec) "\2003"; }
+  #doc h2 { font-size: 1.14em; counter-increment: sub; counter-reset: subsub; }
+  #doc h2::before { content: counter(sec) "." counter(sub) "\2003"; }
+  #doc h3 { font-size: 1.02em; counter-increment: subsub; }
+  #doc h3::before { content: counter(sec) "." counter(sub) "." counter(subsub) "\2003"; }
+  #doc h4 { font-size: 1em; display: inline; margin-right: .6em; }
+  .docmeta { text-align: center; margin: .4in 0 .5in; }
+  .doctitle { font-size: 1.9em; font-weight: 700; margin: 0 0 .5em; letter-spacing: -.01em; }
+  .docauthor { font-size: 1.05em; }
+  .docdate { font-size: .95em; color: var(--muted); margin-top: .35em; }
+  .abstract { margin: 0 .5in .5in; font-size: .95em; }
+  .abstitle { text-align: center; font-weight: 700; margin-bottom: .4em; }
+  #doc ul, #doc ol { margin: .4em 0 .7em; padding-left: 1.6em; }
+  #doc li { margin: .18em 0; }
+  #doc blockquote { margin: .7em 1.4em; color: var(--muted); font-style: italic; }
+  #doc hr { border: 0; border-top: 1px solid var(--rule); margin: 1.2em 0; }
+  #doc code { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: .88em; background: rgba(0,0,0,.045); padding: .08em .28em; border-radius: 3px; }
+  #doc pre { background: rgba(0,0,0,.04); padding: .7em .9em; border-radius: 4px; overflow-x: auto; }
+  #doc pre code { background: none; padding: 0; font-size: .85em; }
+  .env { margin: .8em 0; }
+  .envname { font-weight: 700; font-style: normal; }
+  .env.theorem, .env.lemma, .env.corollary, .env.proposition, .env.claim { font-style: italic; }
+  .env.proof .envname { font-style: italic; font-weight: 400; }
+  .tablewrap { overflow-x: auto; margin: .9em 0; }
+  #doc table { border-collapse: collapse; margin: 0 auto; font-size: .96em; }
+  #doc th, #doc td { padding: .3em .7em; text-align: left; }
+  #doc thead, #doc tr:first-child th { border-bottom: 1px solid var(--ink); }
+  #doc th { font-weight: 700; }
+  #doc table { border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+  .kd { margin: .85em 0; position: relative; }
+  .numbered::after {
+    counter-increment: eq; content: "(" counter(eq) ")";
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    font-size: .95em;
+  }
+  .err { color: #b3261e; font-family: 'SF Mono', monospace; font-size: .86em; }
+  .katex { font-size: 1.04em; }
+  .empty { color: var(--muted); text-align: center; padding: 2in 0; font-size: .95em; }
+  .flash { animation: flash .5s ease-out; }
+  @keyframes flash { from { background: rgba(138,100,22,.16); } to { background: transparent; } }
+  /* export mode: an exact 624px column (6.5in at 96dpi) that the exporter scales to fit */
+  html.exporting, html.exporting body { background: #fff; }
+  html.exporting .page {
+    width: 624px; max-width: none; margin: 0; padding: 0;
+    box-shadow: none; border-radius: 0;
+  }
+  @media print {
+    html, body { background: #fff; }
+    .page { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
+    #doc h1, #doc h2, #doc h3 { break-after: avoid; }
+    .kd, table, pre { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="page"><div id="doc"><div class="empty">Start typing - the rendered document appears here.</div></div></div>
+  <script src="katex/katex.min.js"></script>
+  <script>
+  (function () {
+    var cache = new Map();
+    var doc = document.getElementById('doc');
+
+    function renderMath(scope) {
+      var nodes = scope.querySelectorAll('.km');
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var tex = el.textContent;
+        var display = el.classList.contains('kd');
+        var key = (display ? 'D' : 'I') + tex;
+        var out = cache.get(key);
+        if (out === undefined) {
+          try {
+            out = katex.renderToString(tex, {
+              displayMode: display, throwOnError: false, strict: false, trust: false,
+              errorColor: '#b3261e', maxSize: 30
+            });
+          } catch (e) {
+            out = '<span class="err">' + tex.replace(/</g, '&lt;') + '</span>';
+          }
+          if (cache.size > 900) cache.clear();
+          cache.set(key, out);
+        }
+        el.innerHTML = out;
+      }
+    }
+
+    // Math fonts load lazily by default, which means the first formula - and any
+    // export taken right after it - can be laid out with fallback metrics.
+    var fontsReady = (function () {
+      if (!document.fonts) return Promise.resolve();
+      try { document.fonts.forEach(function (f) { f.load(); }); } catch (e) {}
+      return document.fonts.ready;
+    })();
+
+    window.bl = {
+      ready: function () { return fontsReady; },
+      set: function (html) {
+        var scroller = document.scrollingElement || document.body;
+        var top = scroller.scrollTop;
+        doc.innerHTML = html || '<div class="empty">Start typing - the rendered document appears here.</div>';
+        renderMath(doc);
+        scroller.scrollTop = top;
+      },
+      syncTo: function (line) {
+        var best = null, bestLine = -1;
+        var nodes = doc.querySelectorAll('[data-l]');
+        for (var i = 0; i < nodes.length; i++) {
+          var l = parseInt(nodes[i].getAttribute('data-l'), 10);
+          if (l <= line && l > bestLine) { bestLine = l; best = nodes[i]; }
+        }
+        if (!best) return;
+        var r = best.getBoundingClientRect();
+        if (r.top < 40 || r.bottom > window.innerHeight - 40) {
+          best.scrollIntoView({ block: 'center' });
+        }
+      },
+      exportOn: function () {
+        document.documentElement.classList.add('exporting');
+      },
+      /* Page-break offsets that never cut through a block, in CSS pixels. */
+      metrics: function (pageH) {
+        var page = document.querySelector('.page');
+        var doc = document.getElementById('doc');
+        var pageRect = page.getBoundingClientRect();
+        var originY = pageRect.top;
+        var total = Math.ceil(pageRect.height);
+        var width = Math.ceil(pageRect.width);
+        var cands = [];
+        function walk(node, depth) {
+          for (var i = 0; i < node.children.length; i++) {
+            var el = node.children[i];
+            var r = el.getBoundingClientRect();
+            if (r.height > 0) cands.push(Math.ceil(r.bottom - originY));
+            var tag = el.tagName;
+            if (depth < 1 && (tag === 'UL' || tag === 'OL' || tag === 'DIV' || tag === 'HEADER')) {
+              walk(el, depth + 1);
+            }
+          }
+        }
+        walk(doc, 0);
+        cands.sort(function (a, b) { return a - b; });
+        var breaks = [];
+        var start = 0;
+        var guard = 0;
+        while (start < total - 2 && guard < 400) {
+          guard++;
+          var limit = start + pageH;
+          if (limit >= total) { breaks.push(total); break; }
+          var best = -1;
+          for (var i = 0; i < cands.length; i++) {
+            var c = cands[i];
+            if (c > start + pageH * 0.4 && c <= limit && c > best) best = c;
+          }
+          if (best < 0) best = limit;
+          breaks.push(best);
+          start = best;
+        }
+        if (!breaks.length) breaks.push(total);
+        return JSON.stringify({ total: total, width: width, breaks: breaks });
+      },
+      theme: function (dark) {
+        document.documentElement.classList.toggle('dark', !!dark);
+      }
+    };
+  })();
+  </script>
+</body>
+</html>
