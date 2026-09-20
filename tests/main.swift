@@ -198,6 +198,170 @@ if DocTranspiler.render("- item\n  - nested").latex.contains("leftskip") {
     print("FAIL nested list items were treated as indented paragraphs")
 }
 
+// --- folding: you select lines and they collapse; nothing is detected
+func foldOf(_ text: String, _ selection: NSRange) -> FoldRegion? {
+    FoldMath.region(forSelection: selection, in: text as NSString)
+}
+
+checks += 1
+if let r = foldOf("one\ntwo\nthree\nfour", NSRange(location: 0, length: 9)) {
+    let shown = ("one\ntwo\nthree\nfour" as NSString).substring(to: r.headerEnd)
+    if shown != "one" || r.lines != 2 {
+        failures += 1
+        print("FAIL fold over three lines: visible \(shown.debugDescription), hidden lines \(r.lines)")
+    }
+} else {
+    failures += 1
+    print("FAIL fold over three lines: nothing to fold")
+}
+
+checks += 1
+// a selection that starts mid-line still folds whole lines
+if let r = foldOf("alpha\nbeta\ngamma", NSRange(location: 8, length: 8)) {
+    if r.headerEnd != 10 || r.lines != 1 {
+        failures += 1
+        print("FAIL fold from mid-line: headerEnd \(r.headerEnd) lines \(r.lines)")
+    }
+} else {
+    failures += 1
+    print("FAIL fold from mid-line: nothing to fold")
+}
+
+checks += 1
+if foldOf("only one line here", NSRange(location: 0, length: 8)) != nil {
+    failures += 1
+    print("FAIL a selection inside one line should not fold")
+}
+
+checks += 1
+if foldOf("a\nb", NSRange(location: 0, length: 0)) != nil {
+    failures += 1
+    print("FAIL an empty selection should not fold")
+}
+
+checks += 1
+do {
+    // the last line of a file has no closing newline, and is still counted
+    let text = "head\nx\ny"
+    if let r = foldOf(text, NSRange(location: 0, length: text.count)) {
+        if r.lines != 2 {
+            failures += 1
+            print("FAIL fold to end of file: expected 2 hidden lines, got \(r.lines)")
+        }
+    } else {
+        failures += 1
+        print("FAIL fold to end of file: nothing to fold")
+    }
+}
+
+do {
+    let text = "one\ntwo\nthree\nfour\nfive\nsix"
+    let folds = FoldController()
+    guard let a = foldOf(text, NSRange(location: 0, length: 7)),
+          let b = foldOf(text, NSRange(location: 14, length: 9)) else {
+        failures += 1
+        print("FAIL could not build the folds for the controller checks")
+        exit(1)
+    }
+    folds.add(a)
+    folds.add(b)
+
+    checks += 1
+    if !folds.isHidden(a.hidden.location + 1) || folds.isHidden(0) || folds.isHidden(b.hidden.location - 1) {
+        failures += 1
+        print("FAIL hidden lookup: inside is hidden, the header and the gap are not")
+    }
+
+    checks += 1
+    if folds.regions.count != 2 || folds.regions[0].hidden.location > folds.regions[1].hidden.location {
+        failures += 1
+        print("FAIL folds should stay sorted")
+    }
+
+    checks += 1
+    // a fold that swallows an existing one replaces it
+    if let big = foldOf(text, NSRange(location: 0, length: text.count)) {
+        folds.add(big)
+        if folds.regions.count != 1 || folds.regions[0].hidden != big.hidden {
+            failures += 1
+            print("FAIL a fold that swallows others should replace them: \(folds.regions.count) left")
+        }
+    }
+    folds.removeAll()
+
+    checks += 1
+    // where folding leaves the caret must not read as inside the fold
+    folds.add(a)
+    if folds.region(containing: a.headerEnd) != nil {
+        failures += 1
+        print("FAIL a caret at the end of a folded header must not reopen it")
+    }
+    if folds.region(containing: a.hidden.location + 1) == nil {
+        failures += 1
+        print("FAIL a caret inside a fold should be detected")
+    }
+
+    checks += 1
+    // the regression that ate a letter: the header's own newline stays visible, and
+    // so does the first character after the fold, so text never runs onto the header
+    if folds.isHidden(a.headerEnd) || folds.isHidden(NSMaxRange(a.hidden)) {
+        failures += 1
+        print("FAIL the header newline and the character after a fold must stay visible")
+    }
+
+    checks += 1
+    // typing at the end of the header line moves the fold rather than releasing it
+    let before = a.headerEnd
+    folds.adjust(replaced: NSRange(location: a.headerEnd, length: 0), delta: 1, textLength: 100)
+    if folds.isEmpty || folds.regions[0].headerEnd != before + 1 {
+        failures += 1
+        print("FAIL typing at the end of a folded header should shift the fold, not release it")
+    }
+    folds.removeAll()
+    folds.add(a)
+
+    checks += 1
+    // deleting the header's newline joins it to the hidden text, so the fold goes
+    folds.adjust(replaced: NSRange(location: a.headerEnd, length: 1), delta: -1, textLength: 100)
+    if !folds.isEmpty {
+        failures += 1
+        print("FAIL deleting the newline that ends a folded header should release the fold")
+    }
+    folds.add(a)
+
+    checks += 1
+    // typing before a fold shifts it; typing after leaves it alone
+    let original = a.hidden.location
+    folds.adjust(replaced: NSRange(location: 0, length: 0), delta: 3, textLength: 100)
+    if folds.regions.first?.hidden.location != original + 3 {
+        failures += 1
+        print("FAIL a fold should shift when text is inserted before it")
+    }
+    folds.adjust(replaced: NSRange(location: 90, length: 0), delta: 1, textLength: 101)
+    if folds.regions.first?.hidden.location != original + 3 {
+        failures += 1
+        print("FAIL a fold should not move when text is inserted after it")
+    }
+
+    checks += 1
+    // an edit that reaches into a fold releases it, rather than corrupting it
+    let start = folds.regions[0].hidden.location
+    folds.adjust(replaced: NSRange(location: start + 1, length: 1), delta: -1, textLength: 100)
+    if !folds.isEmpty {
+        failures += 1
+        print("FAIL editing inside a fold should release it")
+    }
+
+    checks += 1
+    // typing at the start of the line after a fold does not touch the fold
+    folds.add(a)
+    folds.adjust(replaced: NSRange(location: NSMaxRange(a.hidden), length: 0), delta: 1, textLength: 100)
+    if folds.isEmpty {
+        failures += 1
+        print("FAIL typing on the line after a fold should leave it alone")
+    }
+}
+
 // --- comments
 expectContains("% a note\nvisible text", "visible text", "a comment line is dropped")
 checks += 1

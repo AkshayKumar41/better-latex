@@ -13,6 +13,8 @@ final class Doc: ObservableObject, Identifiable {
     @Published var url: URL
     @Published var dirty = false
     var text: String
+    /// Folds belong to the document, so they survive switching tabs.
+    let folds = FoldController()
     let kind: Kind
 
     var name: String { url.lastPathComponent }
@@ -64,6 +66,11 @@ final class Workspace: ObservableObject {
 
     @Published var showAddShortcut = false
     var lastSelection = ""
+
+    /// The editor currently showing a document, for fold commands from the menu.
+    weak var editorTarget: EditorActionTarget?
+
+    func fold(_ command: FoldCommand) { editorTarget?.foldCommand(command) }
 
     let bridge = PreviewBridge()
     let meter = PerfMeter()

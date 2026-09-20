@@ -18,7 +18,7 @@ install)
   ;;
 test)
   mkdir -p build
-  swiftc -O -target "$TARGET" Sources/Transpile/*.swift Sources/Import/*.swift tests/main.swift -o build/bltx-test
+  swiftc -O -target "$TARGET" Sources/Transpile/*.swift Sources/Import/*.swift Sources/App/Folding.swift tests/main.swift -o build/bltx-test
   exec ./build/bltx-test
   ;;
 docs)
@@ -36,7 +36,7 @@ esac
 mkdir -p build
 
 # 1. transpiler checks gate the build
-swiftc -O -target "$TARGET" Sources/Transpile/*.swift Sources/Import/*.swift tests/main.swift -o build/bltx-test
+swiftc -O -target "$TARGET" Sources/Transpile/*.swift Sources/Import/*.swift Sources/App/Folding.swift tests/main.swift -o build/bltx-test
 ./build/bltx-test
 
 # 2. app icon (cached)

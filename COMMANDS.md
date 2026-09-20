@@ -85,6 +85,9 @@ preview renders and what `Cmd-Shift-E` writes out.
 | `Cmd-Shift-M` | show or hide the performance meter |
 | `Cmd-Shift-K` | add a shortcut of your own |
 | `Cmd-Shift-I` | convert a PDF or .tex file into an editable document |
+| `Control-Cmd--` | fold the selected lines |
+| `Control-Cmd-=` | unfold the fold at the cursor |
+| `Control-Shift-Cmd-=` | unfold everything |
 | `Cmd-Shift-/` | back to this reference, which is always the first tab |
 | `Cmd-Shift-]` | next document |
 | `Cmd-Shift-[` | previous document |

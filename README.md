@@ -63,6 +63,16 @@ converter recognizes turn brass and math regions get a faint tint, which is the 
 loop for the language: **a word that stays grey is being treated as a plain variable**,
 which is what you want for `x`, `y` and `theta`, and a warning for anything else.
 
+**Folding** collapses lines you choose, so you can stop looking at everything. Select some
+lines and either press `Control-Cmd--` or click the small grey arrow that appears in the
+gutter beside the selection. The first line stays visible, followed by a `⋯ 4 lines` badge;
+the rest is hidden. Click the brass arrow or the badge, or press `Control-Cmd-=`, to open it
+again, and `Control-Shift-Cmd-=` opens everything. Nothing is detected automatically: a fold
+is exactly the lines you selected. Folding never changes the document - the text, the
+preview and the export all still see every character. A fold is released if you edit
+inside it, and moves with the text if you edit above it. Folds last for the session, not
+after quitting.
+
 **Page** (right, `Cmd-R`) is the rendered document, redrawn about 70ms after you stop
 typing. It scrolls to follow the cursor. The paper keeps letter proportions at every pane
 width: narrowing the pane zooms the page out rather than reflowing the text into a
@@ -296,6 +306,9 @@ to Overleaf, a journal, or a co-author who wants the source.
 | `Cmd-W` | close the current tab |
 | `Cmd-Shift-K` | add a shortcut |
 | `Cmd-Shift-I` | convert a PDF or `.tex` file into an editable document |
+| `Control-Cmd--` | fold the selected lines |
+| `Control-Cmd-=` | unfold the fold at the cursor |
+| `Control-Shift-Cmd-=` | unfold everything |
 | `Cmd-Shift-/` | back to the reference |
 | `Cmd-B` | show or hide the file list |
 | `Cmd-R` | show or hide the rendered page |
@@ -327,7 +340,9 @@ Sources/Transpile/     Symbols.swift        the word tables
                        MathTranspiler.swift lexer + recursive-descent emitter
                        DocTranspiler.swift  document structure, HTML and LaTeX back ends
                        UserSymbols.swift    your shortcuts file
-Sources/App/           Workspace.swift      folder, tabs, render pipeline, saving
+Sources/App/           Folding.swift       which lines are folded, and keeping that honest
+                       FoldingTextView.swift the gutter arrows and the fold badge
+                       Workspace.swift      folder, tabs, render pipeline, saving
                        EditorView.swift     NSTextView + incremental highlighter
                        PreviewView.swift    the long-lived WebKit view
                        PDFExport.swift      render once, slice into pages

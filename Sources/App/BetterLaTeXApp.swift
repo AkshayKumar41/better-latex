@@ -47,7 +47,7 @@ struct BetterLaTeXApp: App {
                 }
                 .keyboardShortcut("w")
             }
-            CommandMenu("View") {
+            CommandMenu("Editor") {
                 Button("Toggle File List") { ws.showSidebar.toggle() }
                     .keyboardShortcut("b")
                 Button("Toggle Rendered Page") { ws.showPreview.toggle() }
@@ -56,6 +56,14 @@ struct BetterLaTeXApp: App {
                     ws.showMeter.toggle()
                 }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
+                Divider()
+                // Control-Command, because Command-Option-[ is already taken by macOS
+                Button("Fold Selection") { ws.fold(.foldSelection) }
+                    .keyboardShortcut("-", modifiers: [.command, .control])
+                Button("Unfold") { ws.fold(.unfold) }
+                    .keyboardShortcut("=", modifiers: [.command, .control])
+                Button("Unfold All") { ws.fold(.unfoldAll) }
+                    .keyboardShortcut("=", modifiers: [.command, .control, .shift])
                 Divider()
                 Button("Next Document") { cycle(1) }
                     .keyboardShortcut("]", modifiers: [.command, .shift])

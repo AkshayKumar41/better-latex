@@ -4,6 +4,16 @@
 import AppKit
 import SwiftUI
 
+enum FoldCommand {
+    case foldSelection, unfold, unfoldAll
+}
+
+/// Anything that can carry out a fold command from the menu.
+protocol EditorActionTarget: AnyObject {
+    func foldCommand(_ command: FoldCommand)
+}
+
+
 struct EditorPane: NSViewRepresentable {
     @ObservedObject var doc: Doc
     let workspace: Workspace
@@ -18,7 +28,8 @@ struct EditorPane: NSViewRepresentable {
         container.widthTracksTextView = true
         layout.addTextContainer(container)
 
-        let tv = NSTextView(frame: .zero, textContainer: container)
+        let tv = FoldingTextView(frame: .zero, textContainer: container)
+        layout.delegate = context.coordinator
         tv.delegate = context.coordinator
         tv.isRichText = false
         tv.allowsUndo = true
@@ -33,7 +44,7 @@ struct EditorPane: NSViewRepresentable {
         tv.backgroundColor = Palette.editorBG
         tv.insertionPointColor = Palette.brass
         tv.selectedTextAttributes = [NSAttributedString.Key.backgroundColor: Palette.selection]
-        tv.textContainerInset = NSSize(width: 18, height: 16)
+        tv.textContainerInset = NSSize(width: GutterPainter.width + 12, height: 16)
         tv.isVerticallyResizable = true
         tv.isHorizontallyResizable = false
         tv.autoresizingMask = [.width]
@@ -49,6 +60,14 @@ struct EditorPane: NSViewRepresentable {
         scroll.drawsBackground = true
         scroll.backgroundColor = Palette.editorBG
 
+        tv.onUnfold = { [weak coordinator = context.coordinator] region in
+            coordinator?.unfold(region)
+        }
+        tv.onFoldSelection = { [weak coordinator = context.coordinator] in
+            guard let coordinator, let view = coordinator.textView else { return }
+            coordinator.foldSelection(view.selectedRange())
+        }
+
         context.coordinator.textView = tv
         context.coordinator.load(doc)
         return scroll
@@ -58,13 +77,16 @@ struct EditorPane: NSViewRepresentable {
         context.coordinator.load(doc)
     }
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    final class Coordinator: NSObject, NSTextViewDelegate, NSLayoutManagerDelegate, EditorActionTarget {
         weak var textView: NSTextView?
         let workspace: Workspace
         private var loadedID: Doc.ID?
         private weak var doc: Doc?
         private var loading = false
         private var syncWork: DispatchWorkItem?
+        /// The edit about to be applied, recorded before the text changes so the
+        /// folds can be shifted by exactly what was replaced.
+        private var pendingEdit: (range: NSRange, newLength: Int)?
 
         init(workspace: Workspace) { self.workspace = workspace }
 
@@ -72,6 +94,8 @@ struct EditorPane: NSViewRepresentable {
             guard loadedID != doc.id, let tv = textView else { return }
             loadedID = doc.id
             self.doc = doc
+            workspace.editorTarget = self
+            (tv as? FoldingTextView)?.folds = doc.folds
             // Filling the view is not an edit: without this the file would be
             // marked dirty and rewritten the moment it was opened.
             loading = true
@@ -85,12 +109,100 @@ struct EditorPane: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !loading, let tv = textView, let doc else { return }
             let text = tv.string
+            if !doc.folds.isEmpty {
+                if let edit = pendingEdit {
+                    doc.folds.adjust(replaced: edit.range, delta: edit.newLength - edit.range.length,
+                                     textLength: (text as NSString).length)
+                } else {
+                    // A change that did not announce itself (an undo, say): the fold
+                    // positions cannot be trusted, so let them go rather than guess.
+                    doc.folds.removeAll()
+                }
+                refreshFolds()
+            }
+            pendingEdit = nil
             workspace.textChanged(doc, to: text)
             Highlighter.apply(to: tv.textStorage!, range: Highlighter.block(in: text, around: tv.selectedRange()))
         }
 
+        // MARK: folding
+
+        /// The layout manager asks what to draw; folded characters are given no
+        /// glyph, which is what makes them disappear without touching the text.
+        func layoutManager(_ layoutManager: NSLayoutManager,
+                           shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+                           properties: UnsafePointer<NSLayoutManager.GlyphProperty>,
+                           characterIndexes: UnsafePointer<Int>,
+                           font: NSFont,
+                           forGlyphRange glyphRange: NSRange) -> Int {
+            guard let folds = doc?.folds, !folds.isEmpty else { return 0 }
+            var changed = false
+            let adjusted = UnsafeMutablePointer<NSLayoutManager.GlyphProperty>.allocate(capacity: glyphRange.length)
+            defer { adjusted.deallocate() }
+            for i in 0..<glyphRange.length {
+                if folds.isHidden(characterIndexes[i]) {
+                    adjusted[i] = .null
+                    changed = true
+                } else {
+                    adjusted[i] = properties[i]
+                }
+            }
+            guard changed else { return 0 }
+            layoutManager.setGlyphs(glyphs, properties: adjusted, characterIndexes: characterIndexes,
+                                    font: font, forGlyphRange: glyphRange)
+            return glyphRange.length
+        }
+
+        func foldCommand(_ command: FoldCommand) {
+            guard let tv = textView, let folds = doc?.folds else { return }
+            switch command {
+            case .foldSelection:
+                foldSelection(tv.selectedRange())
+            case .unfold:
+                let ns = tv.string as NSString
+                let caret = tv.selectedRange().location
+                if let region = folds.region(containing: caret) ?? folds.region(headerAt: caret, in: ns) {
+                    unfold(region)
+                }
+            case .unfoldAll:
+                folds.removeAll()
+                refreshFolds()
+            }
+        }
+
+
+        /// Folds every line the selection touches.
+        func foldSelection(_ selection: NSRange) {
+            guard let tv = textView, let folds = doc?.folds, selection.length > 0,
+                  let region = FoldMath.region(forSelection: selection, in: tv.string as NSString) else { return }
+            folds.add(region)
+            tv.setSelectedRange(NSRange(location: region.headerEnd, length: 0))
+            refreshFolds()
+        }
+
+        func unfold(_ region: FoldRegion) {
+            doc?.folds.remove(region)
+            refreshFolds()
+        }
+
+        /// Lays the whole document out again after the folds change.
+        private func refreshFolds() {
+            guard let tv = textView, let layoutManager = tv.layoutManager else { return }
+            let full = NSRange(location: 0, length: (tv.string as NSString).length)
+            layoutManager.invalidateGlyphs(forCharacterRange: full, changeInLength: 0, actualCharacterRange: nil)
+            layoutManager.invalidateLayout(forCharacterRange: full, actualCharacterRange: nil)
+            tv.needsDisplay = true
+            (tv as? FoldingTextView)?.refreshGutter()
+        }
+
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let tv = textView else { return }
+            // Moving into folded text opens it, so the caret is never invisible.
+            if let folds = doc?.folds, let region = folds.region(containing: tv.selectedRange().location) {
+                unfold(region)
+            }
+            // and the gutter offers an arrow beside whatever is selected
+            (tv as? FoldingTextView)?.refreshGutter()
             let selected = (tv.string as NSString).substring(with: tv.selectedRange())
             workspace.lastSelection = selected.trimmingCharacters(in: .whitespacesAndNewlines)
             guard workspace.showPreview else { return }
@@ -120,6 +232,7 @@ struct EditorPane: NSViewRepresentable {
                     return false
                 }
             }
+            pendingEdit = (range, (text as NSString).length)
             return true
         }
     }
@@ -148,7 +261,9 @@ enum Highlighter {
         "align", "aligned", "gather", "latex", "tex", "code", "verb", "mono", "text",
     ]
 
-    private static let metaKeys: Set<String> = ["title", "author", "date", "abstract", "keywords"]
+    /// Keywords that open a line and are followed by a colon. Grey, like the
+    /// front matter, because they configure the block rather than say something.
+    private static let metaKeys: Set<String> = ["title", "author", "date", "abstract", "keywords", "box"]
 
     private static let envKeys: Set<String> = [
         "theorem", "lemma", "corollary", "definition", "proposition",
