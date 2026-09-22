@@ -27,6 +27,7 @@
   .page {
     width: 6.9in;
     flex: none;
+    position: relative;
     transform-origin: top center;
     margin: 20px auto 40px;
     padding: 0.85in 0.8in 1in;
@@ -34,6 +35,31 @@
     box-shadow: 0 1px 2px rgba(0,0,0,.16), 0 10px 30px rgba(0,0,0,.10);
     border-radius: 2px;
     box-sizing: border-box;
+  }
+  /* Where the PDF export will cut the page. Purely visual: exported and printed
+     output never contains these, and they never affect layout. */
+  .page-break {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 1.5px dashed var(--rule);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .page-break .tag {
+    position: absolute;
+    top: -8px;
+    right: 12px;
+    background: var(--surround);
+    color: var(--muted);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    padding: 1px 7px;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
   }
   #doc { counter-reset: sec eq; font-size: 11.6pt; line-height: 1.52; }
   #doc p { margin: 0 0 .62em; text-align: justify; hyphens: auto; }
@@ -103,6 +129,7 @@
     .page { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
     #doc h1, #doc h2, #doc h3 { break-after: avoid; }
     .kd, table, pre { break-inside: avoid; }
+    .page-break { display: none; }
   }
 </style>
 </head>
@@ -183,6 +210,7 @@
         renderMath(doc);
         fit();
         scroller.scrollTop = top;
+        if (!exporting) renderPageBreaks();
       },
       syncTo: function (line) {
         var best = null, bestLine = -1;
@@ -202,52 +230,153 @@
         page.style.transform = '';
         stage.style.height = '';
         document.documentElement.classList.add('exporting');
+        removeBreakMarkers();
       },
-      /* Page-break offsets that never cut through a block, in CSS pixels. */
+      /* Page-break offsets that never cut through a line, in CSS pixels. */
       metrics: function (pageH) {
-        var page = document.querySelector('.page');
-        var doc = document.getElementById('doc');
-        var pageRect = page.getBoundingClientRect();
-        var originY = pageRect.top;
-        var total = Math.ceil(pageRect.height);
-        var width = Math.ceil(pageRect.width);
-        var cands = [];
-        function walk(node, depth) {
-          for (var i = 0; i < node.children.length; i++) {
-            var el = node.children[i];
-            var r = el.getBoundingClientRect();
-            if (r.height > 0) cands.push(Math.ceil(r.bottom - originY));
-            var tag = el.tagName;
-            if (depth < 1 && (tag === 'UL' || tag === 'OL' || tag === 'DIV' || tag === 'HEADER')) {
-              walk(el, depth + 1);
-            }
-          }
-        }
-        walk(doc, 0);
-        cands.sort(function (a, b) { return a - b; });
-        var breaks = [];
-        var start = 0;
-        var guard = 0;
-        while (start < total - 2 && guard < 400) {
-          guard++;
-          var limit = start + pageH;
-          if (limit >= total) { breaks.push(total); break; }
-          var best = -1;
-          for (var i = 0; i < cands.length; i++) {
-            var c = cands[i];
-            if (c > start + pageH * 0.4 && c <= limit && c > best) best = c;
-          }
-          if (best < 0) best = limit;
-          breaks.push(best);
-          start = best;
-        }
-        if (!breaks.length) breaks.push(total);
-        return JSON.stringify({ total: total, width: width, breaks: breaks });
+        var m = computeBreaks(pageH);
+        return JSON.stringify(m);
       },
+      showPageBreaks: renderPageBreaks,
       theme: function (dark) {
         document.documentElement.classList.toggle('dark', !!dark);
       }
     };
+
+    /* Elements that are one visual unit and must never be split across a page:
+       a display formula, a table, a code block. There is no safe place to cut
+       inside one - a formula has no "line", a table row could straddle a page -
+       so their own top and bottom edges are the only candidates. */
+    var HARD_ATOMIC_SELECTOR = '.km.kd, table, pre';
+    /* A boxed passage is kept whole the same way, but only when a whole page can
+       actually hold it - it is ordinary paragraph text, so unlike a formula it
+       does have safe internal lines, and falls back to those instead of forcing
+       an oversized box onto one page or, worse, off the page. */
+    var SOFT_ATOMIC_SELECTOR = '.boxed';
+    /* Elements whose own wrapped lines are safe cut points. Earlier this only
+       used each block's own bottom edge, so a paragraph or boxed passage taller
+       than the gap left on a page had nowhere safe to break and got sliced
+       through the middle of a line. Every wrapped line is now a candidate. */
+    var LEAF_SELECTOR = 'p, li, blockquote, .boxed, .env, h1, h2, h3, h4, .docmeta, .abstract';
+    var PAGE_HEIGHT = 864;
+
+    function rectsOf(selector, originY) {
+      var out = [];
+      var els = doc.querySelectorAll(selector);
+      for (var i = 0; i < els.length; i++) {
+        var r = els[i].getBoundingClientRect();
+        if (r.height > 0) out.push({ top: r.top - originY, bottom: r.bottom - originY });
+      }
+      return out;
+    }
+
+    /// Every y (in page-local px, from the page's own top) it would be safe to
+    /// cut at, plus the total height and width of the page content.
+    function computeBreaks(pageH) {
+      var pageRect = page.getBoundingClientRect();
+      var originY = pageRect.top;
+      var total = Math.ceil(pageRect.height);
+      var width = Math.ceil(pageRect.width);
+
+      var hardAtomics = rectsOf(HARD_ATOMIC_SELECTOR, originY);
+      var softAtomics = rectsOf(SOFT_ATOMIC_SELECTOR, originY);
+
+      var soft = [];
+      var leafEls = doc.querySelectorAll(LEAF_SELECTOR);
+      var range = document.createRange();
+      for (var l = 0; l < leafEls.length; l++) {
+        var el = leafEls[l];
+        range.selectNodeContents(el);
+        var rects = range.getClientRects();
+        for (var i = 0; i < rects.length; i++) {
+          if (rects[i].height > 0) soft.push(Math.round(rects[i].bottom - originY));
+        }
+        var own = el.getBoundingClientRect();
+        if (own.height > 0) soft.push(Math.round(own.bottom - originY));
+      }
+      hardAtomics.concat(softAtomics).forEach(function (a) {
+        soft.push(Math.round(a.top));
+        soft.push(Math.round(a.bottom));
+      });
+
+      // never land inside a formula, a table or a code block
+      soft = soft.filter(function (y) {
+        for (var i = 0; i < hardAtomics.length; i++) {
+          if (y > hardAtomics[i].top + 1 && y < hardAtomics[i].bottom - 1) return false;
+        }
+        return true;
+      });
+      // a boxed passage is kept whole too, but only where that is possible: once
+      // it is taller than a full page there is no page it would ever fit on, so
+      // it rolls over freely instead, breaking at its own safe line boundaries.
+      soft = soft.filter(function (y) {
+        for (var i = 0; i < softAtomics.length; i++) {
+          var box = softAtomics[i];
+          if (box.bottom - box.top > pageH) continue;
+          if (y > box.top + 1 && y < box.bottom - 1) return false;
+        }
+        return true;
+      });
+      soft = Array.from(new Set(soft)).sort(function (x, y) { return x - y; });
+
+      var breaks = [];
+      var start = 0;
+      var guard = 0;
+      while (start < total - 2 && guard < 2000) {
+        guard++;
+        var limit = start + pageH;
+        if (limit >= total) { breaks.push(total); break; }
+        var best = -1;
+        for (var i = 0; i < soft.length; i++) {
+          if (soft[i] > start && soft[i] <= limit && soft[i] > best) best = soft[i];
+        }
+        if (best < 0) {
+          // Nothing fits in a whole page: one line or block is taller than the
+          // page. Take the next real edge rather than guess a pixel row, so the
+          // page still runs long instead of cutting through content.
+          for (var j = 0; j < soft.length; j++) {
+            if (soft[j] > start) { best = soft[j]; break; }
+          }
+        }
+        if (best <= start) { breaks.push(total); break; }
+        breaks.push(best);
+        start = best;
+      }
+      if (!breaks.length) breaks.push(total);
+      return { total: total, width: width, breaks: breaks };
+    }
+
+    function removeBreakMarkers() {
+      var old = page.querySelectorAll('.page-break');
+      for (var i = 0; i < old.length; i++) old[i].remove();
+    }
+
+    /// Draws where the PDF export will cut the page. The transform is cleared
+    /// while measuring - getBoundingClientRect() reports the scaled size under
+    /// the fit() zoom, which would put every marker at the wrong height - then
+    /// restored; the markers are children of .page, so they scale back with it.
+    function renderPageBreaks() {
+      removeBreakMarkers();
+      if (exporting) return;
+      var prevTransform = page.style.transform;
+      page.style.transform = '';
+      var m = computeBreaks(PAGE_HEIGHT);
+      page.style.transform = prevTransform;
+      for (var i = 0; i < m.breaks.length - 1; i++) {
+        var y = m.breaks[i];
+        if (y >= m.total - 1) continue;
+        var marker = document.createElement('div');
+        marker.className = 'page-break';
+        marker.style.top = y + 'px';
+        var tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = 'Page ' + (i + 2);
+        marker.appendChild(tag);
+        page.appendChild(marker);
+      }
+    }
+
+    fontsReady.then(function () { if (!exporting) renderPageBreaks(); });
   })();
   </script>
 </body>

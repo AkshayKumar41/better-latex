@@ -100,9 +100,16 @@ final class PDFExportJob: NSObject, WKNavigationDelegate {
         for cut in breaks {
             let bottom = min(cut, total)
             guard bottom > top + 1 else { continue }
+            // The clip has to stop exactly where this slice's content ends, not at
+            // the nominal full-page height: a safe break almost never lands exactly
+            // on that nominal boundary, so a fixed-height clip let a few pixels of
+            // the next line bleed through at the bottom of the page - which then
+            // drew again in full at the top of the next page.
+            let clipHeight = min((bottom - top) * scale, paper.height - margin * 2)
+            let clipY = paper.height - margin - clipHeight
             ctx.beginPDFPage(nil)
             ctx.saveGState()
-            ctx.clip(to: CGRect(x: margin, y: margin, width: paper.width - margin * 2, height: paper.height - margin * 2))
+            ctx.clip(to: CGRect(x: margin, y: clipY, width: paper.width - margin * 2, height: clipHeight))
             // CSS y grows downward; the source page's origin is bottom-left.
             ctx.translateBy(x: margin, y: paper.height - margin - scale * box.height + scale * top)
             ctx.scaleBy(x: scale, y: scale)

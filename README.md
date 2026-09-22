@@ -166,6 +166,11 @@ spaces is indented as a block (four spaces indents twice as far), and `box:` at 
 of a paragraph frames it. Inside mathematics, `boxed(E = m c^2)` frames just the formula.
 Both export without extra packages, as `\leftskip` and `\fbox{\begin{minipage}...}`.
 
+A `box:` never splits across a page unless it is genuinely taller than one whole page - it
+either fits, or moves whole onto the next page, the same as a table or a display equation.
+An oversized box has no page to fit on, so it rolls over freely at that point, still
+breaking only at a safe line boundary rather than through a glyph.
+
 Lists come in three kinds: `- ` bullets, `1. ` numbers, and `A. ` / `a) ` / `(a) ` letters.
 A lettered item keeps the letter you wrote rather than renumbering, and one written under a
 numbered item becomes a sub-part of it, so a problem set reads the way it is written:
@@ -381,6 +386,7 @@ Measured on this machine, M-series, macOS 26:
 | Idle processor | 0.07s of CPU over 20s, about 0.35% of one core |
 | Memory | ~60 MB private (157 MB RSS including shared system frameworks) |
 | Transpile | 2.3 ms for a 6 KB document with 113 formulas |
+| Typing, main thread | about 1.5 ms per character at 7 KB, 2.5 ms at 35 KB (measured by typing into the real editor) |
 | Keystroke to repaint | 70 ms debounce + about 7 ms redraw |
 | Cold first render | 70–100 ms, including font load |
 | PDF export | 6 pages in well under a second |

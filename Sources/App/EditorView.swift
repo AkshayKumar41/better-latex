@@ -176,12 +176,23 @@ struct EditorPane: NSViewRepresentable {
             guard let tv = textView, let folds = doc?.folds, selection.length > 0,
                   let region = FoldMath.region(forSelection: selection, in: tv.string as NSString) else { return }
             folds.add(region)
+            // A math or code span's backgroundColor attribute can extend into the
+            // hidden text. NSLayoutManager still draws that background for glyphs
+            // marked .null - as an oversaturated block, since many zero-width
+            // hidden glyphs stack their tint on top of each other - so it has to be
+            // removed from the hidden range explicitly, not just left to the glyph
+            // hiding to hide it.
+            tv.textStorage?.removeAttribute(.backgroundColor, range: region.hidden)
             tv.setSelectedRange(NSRange(location: region.headerEnd, length: 0))
             refreshFolds()
         }
 
         func unfold(_ region: FoldRegion) {
             doc?.folds.remove(region)
+            if let tv = textView {
+                // Restores whatever backgroundColor foldSelection stripped.
+                Highlighter.apply(to: tv.textStorage!, range: Highlighter.block(in: tv.string, around: region.hidden))
+            }
             refreshFolds()
         }
 

@@ -89,6 +89,18 @@ final class FoldingTextView: NSTextView {
     private var badges: [(rect: NSRect, region: FoldRegion)] = []
     private static let badgeFont = NSFont.systemFont(ofSize: 9.5, weight: .semibold)
 
+    // This is a plain-text editor, so the font panel and the Touch Bar's text
+    // formatting controls (bold, italic, alignment) have nothing to show.
+    //
+    // They are also the single most expensive thing that happens when you type.
+    // On every keystroke AppKit walks the document's attribute runs and asks
+    // NSFontManager to convert each run's font to bold and to italic, building
+    // CoreText font descriptors as it goes. The syntax highlighter creates a lot of
+    // runs with different fonts, so the cost grew with the length of the document:
+    // about 10 ms per character at 7 KB and 33 ms at 35 KB, measured.
+    override func updateFontPanel() {}
+    override func updateTextTouchBarItems() {}
+
     // Painted in drawBackground: in SwiftUI's layer-backed hosting the plain
     // draw(_:) override is bypassed.
     override func drawBackground(in rect: NSRect) {
