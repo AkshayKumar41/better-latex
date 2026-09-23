@@ -13,7 +13,14 @@
     --brass: #8a6416;
   }
   html.dark { --surround: #101114; --rule: #cfcbc2; }
-  html, body { margin: 0; padding: 0; background: var(--surround); }
+  /* fit() resizes .stage (and, while settling, .page's cross-axis box) more
+     than once per render. WebKit's scroll anchoring tries to keep whatever's
+     in view from jumping across a resize by nudging scrollTop on its own,
+     stacking up across those calls - it fought the page's own deliberate
+     scrollTop restore in set() and could leave a document scrolled well past
+     its top on first load. That restore already handles this; the browser's
+     own heuristic on top of it is exactly what should not also be moving it. */
+  html, body { margin: 0; padding: 0; background: var(--surround); overflow-anchor: none; }
   body {
     font-family: 'KaTeX_Main', 'Latin Modern Roman', Georgia, serif;
     color: var(--ink);
@@ -22,6 +29,15 @@
   .stage {
     display: flex;
     justify-content: center;
+    /* Flex's default align-items:stretch pins .page's own height to whatever
+       .stage's height currently is - but fit() (below) sets .stage's height
+       FROM .page's offsetHeight, every time it runs. That circular dependency
+       let a single fit() call's own writes change what page.offsetHeight
+       reported before the call was even over, so the height it multiplied by
+       scale and the height a moment later disagreed - and the container ended
+       up sized for a stale, wrong height it never fully let go of. .page's
+       height only needs to come from its own content, never from .stage. */
+    align-items: flex-start;
     overflow: hidden;
   }
   .page {
@@ -35,6 +51,16 @@
     box-shadow: 0 1px 2px rgba(0,0,0,.16), 0 10px 30px rgba(0,0,0,.10);
     border-radius: 2px;
     box-sizing: border-box;
+    /* fit() (below) scales this element down with a CSS transform when the
+       pane is narrower than the page. WebKit promotes a transformed element to
+       its own composited layer the first time a transform is actually set on
+       it - and doing that lazily, mid-resize, can leave that layer's backing
+       store painted before the white background is, showing the surrounding
+       dark page through .page with only the (correctly dark) text drawn on
+       top - which looks exactly like faint, ghosted text. Declaring the layer
+       up front with will-change means it's already fully painted, background
+       included, before any transform is ever applied to it. */
+    will-change: transform;
   }
   /* Where the PDF export will cut the page. Purely visual: exported and printed
      output never contains these, and they never affect layout. */
@@ -85,6 +111,9 @@
   #doc li { margin: .18em 0; }
   #doc blockquote { margin: .7em 1.4em; color: var(--muted); font-style: italic; }
   #doc hr { border: 0; border-top: 1px solid var(--rule); margin: 1.2em 0; }
+  /* A typed page break takes no space of its own; the dashed line that marks a
+     real page boundary is drawn by the same code that draws every other one. */
+  .page-break-here { height: 0; margin: 0; padding: 0; }
   #doc code { font-family: 'SF Mono', ui-monospace, Menlo, monospace; font-size: .88em; background: rgba(0,0,0,.045); padding: .08em .28em; border-radius: 3px; }
   #doc pre { background: rgba(0,0,0,.04); padding: .7em .9em; border-radius: 4px; overflow-x: auto; }
   #doc pre code { background: none; padding: 0; font-size: .85em; }
@@ -176,28 +205,82 @@
     var stage = document.querySelector('.stage');
     var page = document.querySelector('.page');
     var exporting = false;
+    /* The zoom fit() last applied, tracked as a number rather than read back off
+       the live transform: computeBreaks() needs to divide it back out to measure
+       in real, unscaled page units. */
+    var currentScale = 1;
 
     /* The paper keeps its proportions. A narrow pane zooms out rather than
        reflowing the text into a skinnier column, the way a PDF viewer behaves. */
     function fit() {
       if (exporting) return;
-      page.style.transform = '';
-      stage.style.height = '';
+      // offsetWidth/offsetHeight report the page's pre-transform size - a CSS
+      // transform is a paint-time effect and never changes them - so there is
+      // no need to clear the existing scale before reading them.
       var available = stage.clientWidth - 24;
       var natural = page.offsetWidth;
       if (!natural) return;
       var scale = Math.min(1, available / natural);
       if (scale < 0.25) scale = 0.25;
-      if (scale >= 0.999) return;
+      if (scale >= 0.999) {
+        currentScale = 1;
+        page.style.transform = '';
+        stage.style.height = '';
+        return;
+      }
+      currentScale = scale;
       page.style.transform = 'scale(' + scale + ')';
       stage.style.height = Math.ceil(page.offsetHeight * scale) + 'px';
     }
 
+    /// Calls fit() (and the page-break markers) only once page.offsetHeight has
+    /// stopped changing between two consecutive animation frames.
+    ///
+    /// There is no single event for "the page's real height is now known": the
+    /// KaTeX stylesheet and its web fonts each load independently, each capable
+    /// of reflowing the page on their own schedule, and document.readyState can
+    /// already say "complete" before either one has actually finished applying.
+    /// Calling fit() straight from any one of those signals reads whatever
+    /// page.offsetHeight happens to be at that instant, which can be wildly
+    /// wrong while a fallback font is still standing in for KaTeX's real one.
+    /// Waiting for two frames in a row to agree sidesteps needing to know which
+    /// signal, if any, is the right one to trust.
+    // A token, not a plain in-progress flag: a flag would make a call arriving
+    // while an earlier check is still running a no-op, and this genuinely gets
+    // called several times close together (the empty placeholder page settling
+    // instantly, then set() replacing it with the real document moments later).
+    // Dropping the later call is exactly how a stale, too-early height got
+    // locked in. Each call instead supersedes whichever check is running, so
+    // whichever one was requested most recently is always the one that finishes.
+    var settleToken = 0;
+    function settleAndFit() {
+      var token = ++settleToken;
+      var last = -1;
+      var stableFrames = 0;
+      (function check() {
+        if (token !== settleToken) return;
+        var current = page.offsetHeight;
+        stableFrames = current === last ? stableFrames + 1 : 0;
+        last = current;
+        if (stableFrames >= 2) {
+          fit();
+          if (!exporting) renderPageBreaks();
+          return;
+        }
+        requestAnimationFrame(check);
+      })();
+    }
+
     if (window.ResizeObserver) {
-      var observer = new ResizeObserver(function () { fit(); });
-      observer.observe(stage);
+      // The pane resizing is one reason to refit; the page's own content height
+      // changing under it, with the pane untouched, is another - watching .page
+      // itself, not just the pane, is what catches that.
+      var stageObserver = new ResizeObserver(settleAndFit);
+      stageObserver.observe(stage);
+      var pageObserver = new ResizeObserver(settleAndFit);
+      pageObserver.observe(page);
     } else {
-      window.addEventListener('resize', fit);
+      window.addEventListener('resize', settleAndFit);
     }
 
     window.bl = {
@@ -208,9 +291,14 @@
         var top = scroller.scrollTop;
         doc.innerHTML = html || '<div class="empty">Start typing - the rendered document appears here.</div>';
         renderMath(doc);
+        // Immediate, so a normal edit is never one frame behind: the layout is
+        // already settled by the time you are typing. settleAndFit() follows up
+        // in the background to correct this if it wasn't - matters on the very
+        // first render, while fonts or the stylesheet might still be loading.
         fit();
         scroller.scrollTop = top;
         if (!exporting) renderPageBreaks();
+        settleAndFit();
       },
       syncTo: function (line) {
         var best = null, bestLine = -1;
@@ -227,6 +315,7 @@
       },
       exportOn: function () {
         exporting = true;
+        currentScale = 1;
         page.style.transform = '';
         stage.style.height = '';
         document.documentElement.classList.add('exporting');
@@ -260,23 +349,30 @@
     var LEAF_SELECTOR = 'p, li, blockquote, .boxed, .env, h1, h2, h3, h4, .docmeta, .abstract';
     var PAGE_HEIGHT = 864;
 
+    /// Element rects as page-local, unscaled deltas. getBoundingClientRect()
+    /// reports the visually zoomed-out position when fit() has scaled the page
+    /// down, so every delta from the page's own top is divided back by the
+    /// current zoom to recover the real, unscaled px that pageH is measured in -
+    /// the same units the export uses, which never applies this cosmetic zoom.
     function rectsOf(selector, originY) {
       var out = [];
       var els = doc.querySelectorAll(selector);
       for (var i = 0; i < els.length; i++) {
         var r = els[i].getBoundingClientRect();
-        if (r.height > 0) out.push({ top: r.top - originY, bottom: r.bottom - originY });
+        if (r.height > 0) {
+          out.push({ top: (r.top - originY) / currentScale, bottom: (r.bottom - originY) / currentScale });
+        }
       }
       return out;
     }
 
-    /// Every y (in page-local px, from the page's own top) it would be safe to
-    /// cut at, plus the total height and width of the page content.
+    /// Every y (in page-local, unscaled px) it would be safe to cut at, plus the
+    /// total height and width of the page content, also unscaled.
     function computeBreaks(pageH) {
       var pageRect = page.getBoundingClientRect();
       var originY = pageRect.top;
-      var total = Math.ceil(pageRect.height);
-      var width = Math.ceil(pageRect.width);
+      var total = Math.ceil(pageRect.height / currentScale);
+      var width = Math.ceil(pageRect.width / currentScale);
 
       var hardAtomics = rectsOf(HARD_ATOMIC_SELECTOR, originY);
       var softAtomics = rectsOf(SOFT_ATOMIC_SELECTOR, originY);
@@ -289,10 +385,10 @@
         range.selectNodeContents(el);
         var rects = range.getClientRects();
         for (var i = 0; i < rects.length; i++) {
-          if (rects[i].height > 0) soft.push(Math.round(rects[i].bottom - originY));
+          if (rects[i].height > 0) soft.push(Math.round((rects[i].bottom - originY) / currentScale));
         }
         var own = el.getBoundingClientRect();
-        if (own.height > 0) soft.push(Math.round(own.bottom - originY));
+        if (own.height > 0) soft.push(Math.round((own.bottom - originY) / currentScale));
       }
       hardAtomics.concat(softAtomics).forEach(function (a) {
         soft.push(Math.round(a.top));
@@ -319,13 +415,45 @@
       });
       soft = Array.from(new Set(soft)).sort(function (x, y) { return x - y; });
 
+      // A typed page break is mandatory, not just another candidate: the page
+      // ends there even if there was room left, the way \newpage always does.
+      // Everything between two mandatory breaks (or the start/end of the
+      // document) is paginated on its own, so a break never crosses one.
+      var mandatory = [];
+      var breakEls = doc.querySelectorAll('.page-break-here');
+      for (var m = 0; m < breakEls.length; m++) {
+        var mr = breakEls[m].getBoundingClientRect();
+        var my = Math.round((mr.top - originY) / currentScale);
+        if (my > 0 && my < total) mandatory.push(my);
+      }
+      mandatory = Array.from(new Set(mandatory)).sort(function (x, y) { return x - y; });
+
       var breaks = [];
-      var start = 0;
+      var segmentStart = 0;
+      var boundaries = mandatory.concat([total]);
+      for (var s = 0; s < boundaries.length; s++) {
+        var segmentEnd = boundaries[s];
+        if (segmentEnd > segmentStart) {
+          breaks = breaks.concat(pagesWithin(soft, segmentStart, segmentEnd, pageH));
+        } else {
+          breaks.push(segmentEnd); // two page breaks with nothing between them
+        }
+        segmentStart = segmentEnd;
+      }
+      if (!breaks.length) breaks.push(total);
+      return { total: total, width: width, breaks: breaks };
+    }
+
+    /// Safe break points for the content between start and end, always ending
+    /// exactly at end (a real page boundary, whether that is the end of the
+    /// document or a mandatory break).
+    function pagesWithin(soft, start, end, pageH) {
+      var breaks = [];
       var guard = 0;
-      while (start < total - 2 && guard < 2000) {
+      while (start < end - 2 && guard < 2000) {
         guard++;
-        var limit = start + pageH;
-        if (limit >= total) { breaks.push(total); break; }
+        var limit = Math.min(start + pageH, end);
+        if (limit >= end) { breaks.push(end); break; }
         var best = -1;
         for (var i = 0; i < soft.length; i++) {
           if (soft[i] > start && soft[i] <= limit && soft[i] > best) best = soft[i];
@@ -335,15 +463,15 @@
           // page. Take the next real edge rather than guess a pixel row, so the
           // page still runs long instead of cutting through content.
           for (var j = 0; j < soft.length; j++) {
-            if (soft[j] > start) { best = soft[j]; break; }
+            if (soft[j] > start && soft[j] < end) { best = soft[j]; break; }
           }
         }
-        if (best <= start) { breaks.push(total); break; }
+        if (best <= start) { breaks.push(end); break; }
         breaks.push(best);
         start = best;
       }
-      if (!breaks.length) breaks.push(total);
-      return { total: total, width: width, breaks: breaks };
+      if (!breaks.length) breaks.push(end);
+      return breaks;
     }
 
     function removeBreakMarkers() {
@@ -351,17 +479,14 @@
       for (var i = 0; i < old.length; i++) old[i].remove();
     }
 
-    /// Draws where the PDF export will cut the page. The transform is cleared
-    /// while measuring - getBoundingClientRect() reports the scaled size under
-    /// the fit() zoom, which would put every marker at the wrong height - then
-    /// restored; the markers are children of .page, so they scale back with it.
+    /// Draws where the PDF export will cut the page. computeBreaks() already
+    /// returns unscaled, page-local px regardless of the current zoom, and the
+    /// markers are children of .page, so they scale back with it visually - no
+    /// need to touch the live transform to place them.
     function renderPageBreaks() {
       removeBreakMarkers();
       if (exporting) return;
-      var prevTransform = page.style.transform;
-      page.style.transform = '';
       var m = computeBreaks(PAGE_HEIGHT);
-      page.style.transform = prevTransform;
       for (var i = 0; i < m.breaks.length - 1; i++) {
         var y = m.breaks[i];
         if (y >= m.total - 1) continue;
@@ -376,7 +501,11 @@
       }
     }
 
-    fontsReady.then(function () { if (!exporting) renderPageBreaks(); });
+    // The math fonts swap in after this fires, which can change every formula's
+    // size and reflow the page. fit() has to run again too, or the zoomed-out
+    // stage keeps the height it reserved for the pre-font layout, leaving it
+    // mismatched with the page's real size from here on.
+    fontsReady.then(settleAndFit);
   })();
   </script>
 </body>

@@ -171,6 +171,11 @@ either fits, or moves whole onto the next page, the same as a table or a display
 An oversized box has no page to fit on, so it rolls over freely at that point, still
 breaking only at a safe line boundary rather than through a glyph.
 
+A line reading `newpage` (or `pagebreak`) forces a page break exactly there, in the page
+view, the exported PDF and the exported `.tex` alike - it ends the current page even if
+there was plenty of room left, the same as LaTeX's own `\newpage`. Automatic pagination
+elsewhere still finds its own safe breakpoints around it as usual.
+
 Lists come in three kinds: `- ` bullets, `1. ` numbers, and `A. ` / `a) ` / `(a) ` letters.
 A lettered item keeps the letter you wrote rather than renumbering, and one written under a
 numbered item becomes a sub-part of it, so a problem set reads the way it is written:

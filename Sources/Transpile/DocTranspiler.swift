@@ -363,6 +363,16 @@ enum DocTranspiler {
                 continue
             }
 
+            // A forced page break. Zero-height in the preview - the pagination
+            // that draws the dashed "Page N" lines treats it as mandatory, so it
+            // shows up as a real break exactly here, not just a candidate one.
+            if line.lowercased() == "newpage" || line.lowercased() == "pagebreak" {
+                flushPara(); closeLists(to: 0)
+                html += "<div class=\"page-break-here\" data-l=\"\(n)\"></div>\n"
+                tex += "\\newpage\n\n"
+                continue
+            }
+
             if line.hasPrefix("> ") {
                 flushPara(); closeLists(to: 0)
                 let r = inline(String(line.dropFirst(2)), chunks: chunks)

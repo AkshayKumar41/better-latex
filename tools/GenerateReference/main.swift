@@ -129,6 +129,7 @@ table([
     ("`box:`", "puts the paragraph in a frame"),
     ("`> `", "block quotation"),
     ("`---`, `***`", "horizontal rule"),
+    ("`newpage`, `pagebreak`", "forces a page break here, in both the page view and the exported PDF and .tex"),
     ("three backticks", "verbatim code block"),
     ("`| a | b |`", "table row; a `|---|` row marks the header"),
     ("`**bold**`", "bold"),

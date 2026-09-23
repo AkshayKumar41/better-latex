@@ -362,6 +362,28 @@ do {
     }
 }
 
+// --- a typed page break
+expectContains("before\n\nnewpage\n\nafter", "\\newpage", "newpage becomes a real LaTeX page break")
+expectContains("before\n\npagebreak\n\nafter", "\\newpage", "pagebreak is a synonym")
+expectContains("before\n\nNewPage\n\nafter", "\\newpage", "the keyword is case-insensitive")
+checks += 1
+if !DocTranspiler.render("before\n\nnewpage\n\nafter").html.contains("page-break-here") {
+    failures += 1
+    print("FAIL newpage should leave a marker in the preview HTML too")
+}
+checks += 1
+let brokenDoc = DocTranspiler.render("before\n\nnewpage\n\nafter")
+if brokenDoc.html.contains(">newpage<") || brokenDoc.latex.contains("newpage\n") && !brokenDoc.latex.contains("\\newpage") {
+    failures += 1
+    print("FAIL the word newpage leaked into the document instead of becoming a break")
+}
+checks += 1
+// a stray "newpage" inside a sentence is just a word, not a break
+if DocTranspiler.render("we hit a newpage in the story.").latex.contains("\\newpage") {
+    failures += 1
+    print("FAIL newpage inside a sentence should not trigger a page break")
+}
+
 // --- comments
 expectContains("% a note\nvisible text", "visible text", "a comment line is dropped")
 checks += 1
